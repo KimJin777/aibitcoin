@@ -16,6 +16,11 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 SERP_API_KEY = os.getenv("SERP_API_KEY")
 
+# Ollama 설정
+OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3.1:8b")
+OLLAMA_VISION_MODEL = os.getenv("OLLAMA_VISION_MODEL", "llava:7b")
+
 # 트레이딩 설정
 TRADING_SYMBOL = "KRW-BTC"
 MIN_TRADE_AMOUNT = 5000  # 최소 거래 금액 (원)
@@ -41,8 +46,8 @@ NEWS_REGION = "kr"  # 뉴스 지역
 # 스크린샷 설정
 SCREENSHOT_WINDOW_SIZE = (1920, 1080)
 # Vision API 성능 최적화 설정
-VISION_API_TIMEOUT = 20  # Vision API 호출 타임아웃 (초) - 더 짧게
-VISION_API_MAX_TOKENS = 200  # Vision API 최대 출력 토큰 수 - 더 적게
+VISION_API_TIMEOUT = 60  # Vision API 호출 타임아웃 (초) - 더 길게
+VISION_API_MAX_TOKENS = 100  # Vision API 최대 출력 토큰 수 - 더 적게
 VISION_API_TEMPERATURE = 0.2  # Vision API temperature 설정 - 더 낮게
 
 # 스크린샷 최적화 설정
@@ -50,8 +55,8 @@ SCREENSHOT_WAIT_TIME = 10  # 페이지 로딩 대기 시간 (초) - 더 짧게
 SCREENSHOT_ADDITIONAL_WAIT = 2  # 추가 대기 시간 (초) - 더 짧게
 SCREENSHOT_MENU_WAIT = 1  # 메뉴 대기 시간 (초)
 SCREENSHOT_CHART_WAIT = 1  # 차트 업데이트 대기 시간 (초) - 더 짧게
-SCREENSHOT_MAX_SIZE_MB = 0.5  # 스크린샷 최대 크기 (MB) - 더 작게 설정
-SCREENSHOT_QUALITY = 60  # 스크린샷 품질 (0-100) - 더 낮게 설정
+SCREENSHOT_MAX_SIZE_MB = 2.0  # 스크린샷 최대 크기 (MB) - 원래 크기로 복원
+SCREENSHOT_QUALITY = 85  # 스크린샷 품질 (0-100) - 원래 품질로 복원
 
 # 실행 설정
 ANALYSIS_INTERVAL = 300  # 분석 간격 (초)
@@ -75,6 +80,9 @@ BROWSER_DISABLE_JS = True  # JavaScript 비활성화
 BROWSER_DISABLE_CSS = True  # CSS 비활성화
 BROWSER_PAGE_LOAD_STRATEGY = 'eager'  # 페이지 로드 전략
 
+# 차트 설정 옵션
+ADD_BOLLINGER_BANDS = True  # 볼린저 밴드 추가 (XPath 방법 사용)
+
 def validate_api_keys():
     """API 키 유효성 검사"""
     missing_keys = []
@@ -83,8 +91,9 @@ def validate_api_keys():
         missing_keys.append("UPBIT_ACCESS_KEY")
     if not UPBIT_SECRET_KEY:
         missing_keys.append("UPBIT_SECRET_KEY")
-    if not GOOGLE_API_KEY:
-        missing_keys.append("GOOGLE_API_KEY")
+    # Google API 키는 Ollama 사용 시 필요 없음
+    # if not GOOGLE_API_KEY:
+    #     missing_keys.append("GOOGLE_API_KEY")
     
     if missing_keys:
         raise ValueError(f"필수 API 키가 설정되지 않았습니다: {', '.join(missing_keys)}")

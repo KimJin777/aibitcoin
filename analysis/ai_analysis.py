@@ -4,18 +4,74 @@ AI 분석 모듈
 
 import json
 import base64
+import requests
 from datetime import datetime
 from typing import Optional, Dict, Any, List
-import google.generativeai as genai
 from .models import TradingDecision
 from config.settings import (
-    GOOGLE_API_KEY, VISION_API_TIMEOUT, VISION_API_MAX_TOKENS, 
+    OLLAMA_BASE_URL, OLLAMA_MODEL, OLLAMA_VISION_MODEL, VISION_API_TIMEOUT, VISION_API_MAX_TOKENS, 
     VISION_API_TEMPERATURE, STRATEGY_IMPROVEMENT_ENABLED
 )
 
-# Gemini API 설정
-genai.configure(api_key=GOOGLE_API_KEY)
-model = genai.GenerativeModel('gemini-1.5-flash')
+def call_ollama_api(prompt: str, model: str = None, temperature: float = 0.7, max_tokens: int = 1000) -> str:
+    """Ollama API 호출"""
+    if model is None:
+        model = OLLAMA_MODEL
+    
+    url = f"{OLLAMA_BASE_URL}/api/generate"
+    
+    payload = {
+        "model": model,
+        "prompt": prompt,
+        "stream": False,
+        "options": {
+            "temperature": temperature,
+            "num_predict": max_tokens
+        }
+    }
+    
+    try:
+        response = requests.post(url, json=payload, timeout=VISION_API_TIMEOUT)
+        response.raise_for_status()
+        
+        result = response.json()
+        return result.get('response', '')
+        
+    except Exception as e:
+        print(f"❌ Ollama API 호출 중 오류: {e}")
+        return ""
+
+def call_ollama_vision_api(prompt: str, image_base64: str, model: str = None, temperature: float = 0.7, max_tokens: int = 1000) -> str:
+    """Ollama Vision API 호출 (이미지 분석)"""
+    if model is None:
+        model = OLLAMA_VISION_MODEL
+    
+    url = f"{OLLAMA_BASE_URL}/api/generate"
+    
+    # 이미지 데이터 준비
+    image_data = f"data:image/png;base64,{image_base64}"
+    
+    payload = {
+        "model": model,
+        "prompt": prompt,
+        "images": [image_data],
+        "stream": False,
+        "options": {
+            "temperature": temperature,
+            "num_predict": max_tokens
+        }
+    }
+    
+    try:
+        response = requests.post(url, json=payload, timeout=VISION_API_TIMEOUT)
+        response.raise_for_status()
+        
+        result = response.json()
+        return result.get('response', '')
+        
+    except Exception as e:
+        print(f"❌ Ollama Vision API 호출 중 오류: {e}")
+        return ""
 
 def create_market_analysis_data(daily_df, minute_df, current_price, orderbook, fear_greed_data, analyzed_news):
     """AI 분석용 시장 데이터 생성"""
@@ -325,72 +381,37 @@ def ai_trading_decision_with_indicators(market_data: Dict[str, Any]) -> Optional
     """기술적 지표를 포함한 AI 매매 결정 함수"""
     print("=== AI 매매 결정 분석 중 (기술적 지표 포함) ===")
     
-    client = genai.GenerativeModel('gemini-pro') # Changed from OpenAI to Gemini
-    
-    # 기술적 지표, 공포탐욕지수, 뉴스를 포함한 개선된 시스템 메시지
+    # 간소화된 시스템 메시지
     system_message = """
-    You are a Bitcoin investment expert with deep knowledge of technical analysis, market psychology, and news sentiment analysis.
-    
-    Analyze the provided market data including:
-    1. 30-day daily OHLCV data with technical indicators
-    2. Recent 100-minute OHLCV data with technical indicators
-    3. Current price and orderbook information
-    4. Technical indicators summary (RSI, MACD, Bollinger Bands, etc.)
-    5. Fear and Greed Index data (market sentiment indicator)
-    6. Recent news sentiment analysis (positive/negative/neutral news distribution)
-    
-    Consider these technical analysis factors:
-    - Moving Averages (SMA, EMA) trends and crossovers
-    - RSI overbought/oversold conditions (RSI > 70 = overbought, RSI < 30 = oversold)
-    - MACD signal line crossovers and histogram patterns
-    - Bollinger Bands position and width (BB_Position: 0-1, where 0.5 is middle)
-    - Stochastic oscillator signals (K and D lines)
-    - Williams %R overbought/oversold levels
-    - ATR for volatility assessment
-    - ADX for trend strength (ADX > 25 = strong trend)
-    - CCI for momentum (CCI > 100 = overbought, CCI < -100 = oversold)
-    - ROC for momentum confirmation
-    
-    Fear and Greed Index Analysis:
-    - Extreme Fear (0-25): Often indicates oversold conditions, potential buying opportunities
-    - Fear (26-45): Market uncertainty, cautious approach recommended
-    - Neutral (46-55): Balanced market sentiment
-    - Greed (56-75): Market optimism, watch for overbought conditions
-    - Extreme Greed (76-100): Often indicates overbought conditions, potential selling opportunities
-    
-    News Sentiment Analysis:
-    - Positive news sentiment: May indicate bullish momentum or positive market sentiment
-    - Negative news sentiment: May indicate bearish pressure or negative market sentiment
-    - Neutral news sentiment: Balanced market sentiment
-    - Consider news sentiment in combination with technical indicators for confirmation
-    
-    Price trends and momentum patterns
-    Volume patterns and OBV trends
-    Support/resistance levels from Bollinger Bands
-    Market volatility from ATR
-    Orderbook depth and spread
-    Market sentiment from Fear and Greed Index
-    News sentiment impact on market psychology
-    
-    Be conservative and consider risk management in your recommendations.
-    Use technical indicators to confirm signals rather than relying on single indicators.
-    Consider market sentiment from Fear and Greed Index for contrarian opportunities.
-    Consider news sentiment for additional market psychology insights.
-    
-    Provide your analysis in JSON format using the structured output function.
+    You are a Bitcoin trading expert. Analyze the market data and provide a trading decision.
+    Focus on: RSI, MACD, Bollinger Bands, Fear & Greed Index, news sentiment.
+    Decision: buy/sell/hold with brief reasoning.
     """
     
     try:
-        response = client.generate_content(
-            f"Please analyze this Bitcoin market data with technical indicators and provide trading decision: {json.dumps(market_data, default=str)}",
-            generation_config=genai.types.GenerationConfig(
-                max_output_tokens=500,
-                temperature=0.3
-            )
+        # Ollama API 호출 (타임아웃 시 기본 분석 사용)
+        prompt = f"{system_message}\n\nAnalyze Bitcoin market data: {json.dumps(market_data, default=str)}"
+        
+        analysis_text = call_ollama_api(
+            prompt=prompt,
+            temperature=VISION_API_TEMPERATURE,
+            max_tokens=VISION_API_MAX_TOKENS
         )
         
-        # Gemini API 응답 처리
-        analysis_text = response.text
+        if not analysis_text:
+            # API 호출 실패 시 기본 분석 사용
+            current_price = market_data.get('current_price', 0)
+            fear_greed_data = market_data.get('fear_greed_index', {})
+            fear_greed = fear_greed_data.get('value', 50) if isinstance(fear_greed_data, dict) else 50
+            rsi = market_data.get('technical_indicators', {}).get('daily_indicators', {}).get('rsi', 50)
+            
+            if fear_greed > 70:
+                analysis_text = f"Fear & Greed Index가 {fear_greed}로 높음. 과매수 상태일 수 있으므로 보수적 접근 권장."
+            elif fear_greed < 30:
+                analysis_text = f"Fear & Greed Index가 {fear_greed}로 낮음. 과매도 상태일 수 있으므로 매수 기회 고려."
+            else:
+                analysis_text = f"Fear & Greed Index가 {fear_greed}로 중립. 현재 가격 {current_price:,}원 기준으로 관망."
+        
         print(f"🤖 AI 분석 결과: {analysis_text}")
         
         # 기본 결정 구조 생성
@@ -434,8 +455,6 @@ def ai_trading_decision_with_vision(market_data: Dict[str, Any], chart_image_bas
     """Vision API를 사용한 AI 매매 결정 함수 (최적화된 버전)"""
     print("=== AI 매매 결정 분석 중 (Vision API 포함) ===")
     
-    client = genai.GenerativeModel('gemini-pro') # Changed from OpenAI to Gemini
-    
     # Vision API를 위한 매우 간소화된 시스템 메시지
     system_message = """
     You are a Bitcoin trading expert. Analyze the chart and market data quickly.
@@ -444,38 +463,39 @@ def ai_trading_decision_with_vision(market_data: Dict[str, Any], chart_image_bas
     """
     
     try:
-        # Vision API를 위한 Gemini 모델 사용
-        vision_model = genai.GenerativeModel('gemini-1.5-flash')
-        
         if chart_image_base64:
-            # 이미지가 있는 경우 Vision API 사용 (최적화된 설정)
-            image_data = base64.b64decode(chart_image_base64)
+            # 이미지가 있는 경우 Ollama Vision API 사용
+            prompt = f"{system_message}\n\nAnalyze Bitcoin chart and data for trading decision: {json.dumps(market_data, default=str)}"
             
-            # 매우 간소화된 프롬프트
-            prompt = f"Analyze Bitcoin chart and data for trading decision: {json.dumps(market_data, default=str)}"
-            
-            response = vision_model.generate_content(
-                [
-                    prompt,
-                    {"mime_type": "image/png", "data": image_data}
-                ],
-                generation_config=genai.types.GenerationConfig(
-                    max_output_tokens=VISION_API_MAX_TOKENS,  # 설정 파일 값 사용
-                    temperature=VISION_API_TEMPERATURE  # 설정 파일 값 사용
-                )
+            analysis_text = call_ollama_vision_api(
+                prompt=prompt,
+                image_base64=chart_image_base64,
+                temperature=VISION_API_TEMPERATURE,
+                max_tokens=VISION_API_MAX_TOKENS
             )
         else:
             # 이미지가 없는 경우 일반 텍스트 분석
-            response = client.generate_content(
-                f"Analyze Bitcoin market data for trading decision: {json.dumps(market_data, default=str)}",
-                generation_config=genai.types.GenerationConfig(
-                    max_output_tokens=VISION_API_MAX_TOKENS,  # 설정 파일 값 사용
-                    temperature=VISION_API_TEMPERATURE  # 설정 파일 값 사용
-                )
+            prompt = f"{system_message}\n\nAnalyze Bitcoin market data for trading decision: {json.dumps(market_data, default=str)}"
+            
+            analysis_text = call_ollama_api(
+                prompt=prompt,
+                temperature=VISION_API_TEMPERATURE,
+                max_tokens=VISION_API_MAX_TOKENS
             )
         
-        # Gemini API 응답 처리
-        analysis_text = response.text
+        if not analysis_text:
+            # API 호출 실패 시 기본 분석 사용
+            current_price = market_data.get('current_price', 0)
+            fear_greed_data = market_data.get('fear_greed_index', {})
+            fear_greed = fear_greed_data.get('value', 50) if isinstance(fear_greed_data, dict) else 50
+            
+            if fear_greed > 70:
+                analysis_text = f"Fear & Greed Index가 {fear_greed}로 높음. 과매수 상태일 수 있으므로 보수적 접근 권장."
+            elif fear_greed < 30:
+                analysis_text = f"Fear & Greed Index가 {fear_greed}로 낮음. 과매도 상태일 수 있으므로 매수 기회 고려."
+            else:
+                analysis_text = f"Fear & Greed Index가 {fear_greed}로 중립. 현재 가격 {current_price:,}원 기준으로 관망."
+        
         print(f"🤖 AI 분석 결과: {analysis_text}")
         
         # 기본 결정 구조 생성

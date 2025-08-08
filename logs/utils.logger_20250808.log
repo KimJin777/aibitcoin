@@ -1,0 +1,13 @@
+2025-08-08 14:57:19,044 - utils.logger - INFO - Vision API 분석 완료 - 스크린샷: 9.32초, 분석: 220.43초
+2025-08-08 15:00:51,510 - utils.logger - INFO - Vision API 분석 완료 - 스크린샷: 9.14초, 분석: 126.49초
+2025-08-08 15:04:13,770 - utils.logger - INFO - Vision API 분석 완료 - 스크린샷: 9.87초, 분석: 101.92초
+2025-08-08 15:04:20,481 - utils.logger - INFO - Vision API 분석 완료 - 스크린샷: 14.48초, 분석: 111.85초
+2025-08-08 15:10:03,063 - utils.logger - INFO - Vision API 분석 완료 - 스크린샷: 19.29초, 분석: 122.03초
+2025-08-08 15:19:28,213 - utils.logger - INFO - Vision API 분석 완료 - 스크린샷: 22.10초, 분석: 239.90초
+2025-08-08 15:27:41,810 - utils.logger - INFO - Vision API 분석 완료 - 스크린샷: 22.40초, 분석: 165.01초
+2025-08-08 15:35:06,539 - utils.logger - INFO - Vision API 분석 완료 - 스크린샷: 19.80초, 분석: 122.03초
+2025-08-08 15:40:30,008 - utils.logger - INFO - Vision API 분석 완료 - 스크린샷: 19.48초, 분석: 1.22초
+2025-08-08 15:40:30,012 - utils.logger - ERROR - 메인 트레이딩 사이클 오류: 'NoneType' object is not subscriptable
+2025-08-08 15:47:59,305 - utils.logger - INFO - Vision API 분석 완료 - 스크린샷: 19.75초, 분석: 126.68초
+2025-08-08 15:53:22,998 - utils.logger - INFO - Vision API 분석 완료 - 스크린샷: 19.55초, 분석: 1.41초
+2025-08-08 15:53:23,004 - utils.logger - ERROR - 메인 트레이딩 사이클 오류: 'NoneType' object is not subscriptable
