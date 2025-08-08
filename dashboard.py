@@ -140,6 +140,28 @@ class TradingDashboard:
             st.error(f"학습 인사이트 조회 오류: {e}")
             return pd.DataFrame()
     
+    def get_insight_detail(self, insight_id: int) -> pd.DataFrame:
+        """특정 인사이트 상세 정보 조회"""
+        connection = self.get_connection()
+        if not connection:
+            return pd.DataFrame()
+        
+        try:
+            query = """
+            SELECT 
+                id, insight_type, insight_title, insight_description,
+                confidence_level, priority_level, status, created_at
+            FROM learning_insights 
+            WHERE id = %s
+            """
+            
+            df = pd.read_sql(query, connection, params=(insight_id,))
+            connection.close()
+            return df
+        except Exception as e:
+            st.error(f"인사이트 상세 정보 조회 오류: {e}")
+            return pd.DataFrame()
+    
     def get_strategy_improvements(self, limit: int = 10) -> pd.DataFrame:
         """전략 개선 제안 조회"""
         connection = self.get_connection()
@@ -306,6 +328,73 @@ def create_performance_chart(df: pd.DataFrame) -> go.Figure:
     fig.update_layout(height=500, showlegend=False)
     return fig
 
+def show_insight_detail(dashboard: TradingDashboard, insight_id: int):
+    """인사이트 상세 정보 표시"""
+    insight_detail = dashboard.get_insight_detail(insight_id)
+    
+    if insight_detail.empty:
+        st.error("인사이트를 찾을 수 없습니다.")
+        return
+    
+    insight = insight_detail.iloc[0]
+    
+    st.subheader(f"💡 {insight['insight_title']}")
+    st.markdown("---")
+    
+    # 기본 정보
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        st.metric("인사이트 타입", insight['insight_type'])
+        st.metric("신뢰도", f"{insight['confidence_level']:.1f}%")
+    
+    with col2:
+        st.metric("우선순위", insight['priority_level'])
+        st.metric("상태", insight['status'])
+    
+    with col3:
+        st.metric("발견일", insight['created_at'].strftime('%Y-%m-%d'))
+    
+    st.markdown("---")
+    
+    # 상세 설명
+    st.subheader("📝 상세 설명")
+    st.write(insight['insight_description'])
+    
+    # 추가 정보 섹션
+    st.subheader("📊 추가 정보")
+    
+    # 우선순위별 색상 표시
+    priority_colors = {
+        'high': '🔴',
+        'medium': '🟡', 
+        'low': '🟢'
+    }
+    priority_icon = priority_colors.get(insight['priority_level'], '⚪')
+    
+    # 상태별 아이콘
+    status_icons = {
+        'pending': '⏳',
+        'implemented': '✅',
+        'rejected': '❌',
+        'in_progress': '🔄'
+    }
+    status_icon = status_icons.get(insight['status'], '❓')
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.metric("우선순위", f"{priority_icon} {insight['priority_level']}")
+        st.metric("상태", f"{status_icon} {insight['status']}")
+    
+    with col2:
+        st.metric("인사이트 타입", insight['insight_type'])
+        st.metric("신뢰도", f"{insight['confidence_level']:.1f}%")
+    
+    # 뒤로가기 버튼
+    if st.button("← 뒤로가기"):
+        st.rerun()
+
 def main():
     """메인 대시보드"""
     st.set_page_config(
@@ -315,12 +404,57 @@ def main():
         initial_sidebar_state="expanded"
     )
     
-    # 제목
-    st.title("🤖 GPT Bitcoin 자동매매 실시간 모니터링")
-    st.markdown("---")
+    # 세션 상태 초기화
+    if 'show_insight_detail' not in st.session_state:
+        st.session_state.show_insight_detail = False
+    if 'selected_insight_id' not in st.session_state:
+        st.session_state.selected_insight_id = None
     
     # 대시보드 객체 생성
     dashboard = TradingDashboard()
+    
+    # 인사이트 상세 보기 모드
+    if st.session_state.show_insight_detail:
+        st.title("💡 학습 인사이트 상세보기")
+        st.markdown("---")
+        
+        # 인사이트 목록 표시
+        insights = dashboard.get_learning_insights(20)
+        if not insights.empty:
+            st.subheader("📋 인사이트 목록")
+            
+            for _, insight in insights.iterrows():
+                col1, col2, col3 = st.columns([3, 1, 1])
+                
+                with col1:
+                    st.write(f"**{insight['insight_title']}**")
+                    st.write(f"타입: {insight['insight_type']} | 우선순위: {insight['priority_level']}")
+                
+                with col2:
+                    st.write(f"신뢰도: {insight['confidence_level']:.1f}%")
+                
+                with col3:
+                    if st.button(f"상세보기", key=f"detail_{insight['id']}"):
+                        st.session_state.selected_insight_id = insight['id']
+                        st.rerun()
+                
+                st.markdown("---")
+            
+            # 선택된 인사이트 상세 보기
+            if st.session_state.selected_insight_id:
+                show_insight_detail(dashboard, st.session_state.selected_insight_id)
+        
+        # 뒤로가기 버튼
+        if st.button("← 대시보드로 돌아가기"):
+            st.session_state.show_insight_detail = False
+            st.session_state.selected_insight_id = None
+            st.rerun()
+        
+        return
+    
+    # 제목
+    st.title("🤖 GPT Bitcoin 자동매매 실시간 모니터링")
+    st.markdown("---")
     
     # 사이드바 설정
     st.sidebar.title("📊 설정")
@@ -392,6 +526,10 @@ def main():
             
             implemented = len(insights[insights['status'] == 'implemented'])
             st.metric("구현된 인사이트", implemented)
+            
+            # 클릭 가능한 인사이트 목록
+            if st.button("🔍 인사이트 상세보기", key="insight_detail_btn"):
+                st.session_state.show_insight_detail = True
     
     st.markdown("---")
     

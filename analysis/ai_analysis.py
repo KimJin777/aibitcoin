@@ -120,10 +120,10 @@ def analyze_market_sentiment(market_data: Dict[str, Any]) -> Dict[str, Any]:
         """
         
         response = client.generate_content(
-            prompt=analysis_prompt,
-            generation_config=genai.GenerateContentRequest.GenerationConfig(
+            analysis_prompt,
+            generation_config=genai.types.GenerationConfig(
                 max_output_tokens=500,
-                temperature=0.7 # Increased temperature for more creative output
+                temperature=0.7
             )
         )
         
@@ -311,46 +311,38 @@ def ai_trading_decision_with_indicators(market_data: Dict[str, Any]) -> Optional
     
     try:
         response = client.generate_content(
-            prompt=f"Please analyze this Bitcoin market data with technical indicators and provide trading decision: {json.dumps(market_data, default=str)}",
-            generation_config=genai.GenerateContentRequest.GenerationConfig(
+            f"Please analyze this Bitcoin market data with technical indicators and provide trading decision: {json.dumps(market_data, default=str)}",
+            generation_config=genai.types.GenerationConfig(
                 max_output_tokens=500,
-                temperature=0.3,  # 더 보수적인 결정을 위해 낮은 temperature 사용
-                tools=[{
-                    "type": "function",
-                    "function": {
-                        "name": "get_trading_decision",
-                        "description": "비트코인 매매 결정을 위한 구조화된 출력",
-                        "parameters": TradingDecision.model_json_schema()
-                    }
-                }],
-                tool_choice={"type": "function", "function": {"name": "get_trading_decision"}}
+                temperature=0.3
             )
         )
         
-        # Structured output 파싱
-        tool_calls = response.tool_calls
-        if tool_calls and len(tool_calls) > 0:
-            arguments = json.loads(tool_calls[0].function.arguments)
-            decision = TradingDecision(**arguments)
-            
-            # 결과 출력
-            print(f"📈 AI 결정: {decision.decision}")
-            print(f"🎯 신뢰도: {decision.confidence}")
-            print(f"⚠️ 위험도: {decision.risk_level}")
-            print(f"💰 예상 가격 범위: {decision.expected_price_range.min:,.0f}원 ~ {decision.expected_price_range.max:,.0f}원")
-            print(f"📊 주요 지표:")
-            print(f"   - RSI 신호: {decision.key_indicators.rsi_signal}")
-            print(f"   - MACD 신호: {decision.key_indicators.macd_signal}")
-            print(f"   - 볼린저밴드 신호: {decision.key_indicators.bb_signal}")
-            print(f"   - 트렌드 강도: {decision.key_indicators.trend_strength}")
-            print(f"   - 시장 심리: {decision.key_indicators.market_sentiment}")
-            print(f"   - 뉴스 감정: {decision.key_indicators.news_sentiment}")
-            print(f"📝 분석 이유: {decision.reason}")
-            
-            return decision.model_dump()
-        else:
-            print("❌ Structured output 파싱 실패")
-            return None
+        # Gemini API 응답 처리
+        analysis_text = response.text
+        print(f"🤖 AI 분석 결과: {analysis_text}")
+        
+        # 기본 결정 구조 생성
+        decision = {
+            "decision": "hold",  # 기본값
+            "confidence": 0.5,
+            "risk_level": "medium",
+            "expected_price_range": {
+                "min": market_data.get('current_price', 0) * 0.95,
+                "max": market_data.get('current_price', 0) * 1.05
+            },
+            "key_indicators": {
+                "rsi_signal": "neutral",
+                "macd_signal": "neutral",
+                "bb_signal": "neutral",
+                "trend_strength": "neutral",
+                "market_sentiment": "neutral",
+                "news_sentiment": "neutral"
+            },
+            "reason": analysis_text
+        }
+        
+        return decision
             
     except Exception as e:
         print(f"❌ AI 분석 중 오류 발생: {e}")
@@ -441,56 +433,57 @@ def ai_trading_decision_with_vision(market_data: Dict[str, Any], chart_image_bas
         
         messages.append({"role": "user", "content": user_content})
         
-        response = client.generate_content(
-            prompt=f"Please analyze this Bitcoin market data with technical indicators and the provided chart image to provide trading decision: {json.dumps(market_data, default=str)}",
-            generation_config=genai.GenerateContentRequest.GenerationConfig(
-                max_output_tokens=500,
-                temperature=0.3,
-                tools=[{
-                    "type": "function",
-                    "function": {
-                        "name": "get_trading_decision_with_vision",
-                        "description": "비트코인 매매 결정을 위한 구조화된 출력 (Vision API 포함)",
-                        "parameters": TradingDecision.model_json_schema()
-                    }
-                }],
-                tool_choice={"type": "function", "function": {"name": "get_trading_decision_with_vision"}}
-            )
-        )
+        # Vision API를 위한 Gemini 모델 사용
+        vision_model = genai.GenerativeModel('gemini-1.5-flash')
         
-        # Structured output 파싱
-        tool_calls = response.tool_calls
-        if tool_calls and len(tool_calls) > 0:
-            arguments = json.loads(tool_calls[0].function.arguments)
-            decision = TradingDecision(**arguments)
-            
-            # 결과 출력
-            print(f"📈 AI 결정: {decision.decision}")
-            print(f"🎯 신뢰도: {decision.confidence}")
-            print(f"⚠️ 위험도: {decision.risk_level}")
-            print(f"💰 예상 가격 범위: {decision.expected_price_range.min:,.0f}원 ~ {decision.expected_price_range.max:,.0f}원")
-            print(f"📊 주요 지표:")
-            print(f"   - RSI 신호: {decision.key_indicators.rsi_signal}")
-            print(f"   - MACD 신호: {decision.key_indicators.macd_signal}")
-            print(f"   - 볼린저밴드 신호: {decision.key_indicators.bb_signal}")
-            print(f"   - 트렌드 강도: {decision.key_indicators.trend_strength}")
-            print(f"   - 시장 심리: {decision.key_indicators.market_sentiment}")
-            print(f"   - 뉴스 감정: {decision.key_indicators.news_sentiment}")
-            
-            if decision.chart_analysis:
-                print(f"📊 차트 분석:")
-                print(f"   - 가격 액션: {decision.chart_analysis.price_action}")
-                print(f"   - 지지선: {decision.chart_analysis.support_level}")
-                print(f"   - 저항선: {decision.chart_analysis.resistance_level}")
-                print(f"   - 차트 패턴: {decision.chart_analysis.chart_pattern}")
-                print(f"   - 거래량 분석: {decision.chart_analysis.volume_analysis}")
-            
-            print(f"📝 분석 이유: {decision.reason}")
-            
-            return decision.model_dump()
+        if chart_image_base64:
+            # 이미지가 있는 경우 Vision API 사용
+            image_data = base64.b64decode(chart_image_base64)
+            response = vision_model.generate_content(
+                [
+                    f"Please analyze this Bitcoin market data with technical indicators and the provided chart image to provide trading decision: {json.dumps(market_data, default=str)}",
+                    {"mime_type": "image/png", "data": image_data}
+                ],
+                generation_config=genai.types.GenerationConfig(
+                    max_output_tokens=500,
+                    temperature=0.3
+                )
+            )
         else:
-            print("❌ Structured output 파싱 실패")
-            return None
+            # 이미지가 없는 경우 일반 텍스트 분석
+            response = client.generate_content(
+                f"Please analyze this Bitcoin market data with technical indicators and provide trading decision: {json.dumps(market_data, default=str)}",
+                generation_config=genai.types.GenerationConfig(
+                    max_output_tokens=500,
+                    temperature=0.3
+                )
+            )
+        
+        # Gemini API 응답 처리
+        analysis_text = response.text
+        print(f"🤖 AI 분석 결과: {analysis_text}")
+        
+        # 기본 결정 구조 생성
+        decision = {
+            "decision": "hold",  # 기본값
+            "confidence": 0.5,
+            "risk_level": "medium",
+            "expected_price_range": {
+                "min": market_data.get('current_price', 0) * 0.95,
+                "max": market_data.get('current_price', 0) * 1.05
+            },
+            "key_indicators": {
+                "rsi_signal": "neutral",
+                "macd_signal": "neutral",
+                "bb_signal": "neutral",
+                "trend_strength": "neutral",
+                "market_sentiment": "neutral",
+                "news_sentiment": "neutral"
+            },
+            "reason": analysis_text
+        }
+        
+        return decision
             
     except Exception as e:
         print(f"❌ AI 분석 중 오류 발생: {e}")
