@@ -3,6 +3,7 @@ python-dotenv
 
 # AI 및 API
 openai
+google-generativeai
 pydantic
 
 # 암호화폐 거래

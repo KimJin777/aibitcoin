@@ -3,11 +3,16 @@ AI 분석 모듈
 """
 
 import json
+import base64
 from datetime import datetime
 from typing import Optional, Dict, Any, List
-from openai import OpenAI
+import google.generativeai as genai
 from .models import TradingDecision
-from config.settings import OPENAI_API_KEY
+from config.settings import GOOGLE_API_KEY
+
+# Gemini API 설정
+genai.configure(api_key=GOOGLE_API_KEY)
+model = genai.GenerativeModel('gemini-1.5-flash')
 
 def create_market_analysis_data(daily_df, minute_df, current_price, orderbook, fear_greed_data, analyzed_news):
     """AI 분석용 시장 데이터 생성"""
@@ -93,7 +98,7 @@ def analyze_market_sentiment(market_data: Dict[str, Any]) -> Dict[str, Any]:
         분석 결과
     """
     try:
-        client = OpenAI()
+        client = genai.GenerativeModel('gemini-pro') # Changed from OpenAI to Gemini
         
         # 시장 데이터 요약
         current_price = market_data.get('current_price', 0)
@@ -114,16 +119,15 @@ def analyze_market_sentiment(market_data: Dict[str, Any]) -> Dict[str, Any]:
         - 신뢰도: (0.0-1.0)
         """
         
-        response = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {"role": "system", "content": "당신은 비트코인 시장 분석 전문가입니다."},
-                {"role": "user", "content": analysis_prompt}
-            ],
-            max_tokens=500
+        response = client.generate_content(
+            prompt=analysis_prompt,
+            generation_config=genai.GenerateContentRequest.GenerationConfig(
+                max_output_tokens=500,
+                temperature=0.7 # Increased temperature for more creative output
+            )
         )
         
-        analysis_text = response.choices[0].message.content
+        analysis_text = response.text
         
         return {
             'sentiment': 'neutral',  # 기본값
@@ -250,7 +254,7 @@ def ai_trading_decision_with_indicators(market_data: Dict[str, Any]) -> Optional
     """기술적 지표를 포함한 AI 매매 결정 함수"""
     print("=== AI 매매 결정 분석 중 (기술적 지표 포함) ===")
     
-    client = OpenAI()
+    client = genai.GenerativeModel('gemini-pro') # Changed from OpenAI to Gemini
     
     # 기술적 지표, 공포탐욕지수, 뉴스를 포함한 개선된 시스템 메시지
     system_message = """
@@ -306,33 +310,25 @@ def ai_trading_decision_with_indicators(market_data: Dict[str, Any]) -> Optional
     """
     
     try:
-        response = client.chat.completions.create(
-            model="gpt-4o",
-            messages=[
-                {
-                    "role": "system",
-                    "content": system_message
-                },
-                {
-                    "role": "user",
-                    "content": f"Please analyze this Bitcoin market data with technical indicators and provide trading decision: {json.dumps(market_data, default=str)}"
-                }
-            ],
-            response_format={"type": "json_object"},
-            temperature=0.3,  # 더 보수적인 결정을 위해 낮은 temperature 사용
-            tools=[{
-                "type": "function",
-                "function": {
-                    "name": "get_trading_decision",
-                    "description": "비트코인 매매 결정을 위한 구조화된 출력",
-                    "parameters": TradingDecision.model_json_schema()
-                }
-            }],
-            tool_choice={"type": "function", "function": {"name": "get_trading_decision"}}
+        response = client.generate_content(
+            prompt=f"Please analyze this Bitcoin market data with technical indicators and provide trading decision: {json.dumps(market_data, default=str)}",
+            generation_config=genai.GenerateContentRequest.GenerationConfig(
+                max_output_tokens=500,
+                temperature=0.3,  # 더 보수적인 결정을 위해 낮은 temperature 사용
+                tools=[{
+                    "type": "function",
+                    "function": {
+                        "name": "get_trading_decision",
+                        "description": "비트코인 매매 결정을 위한 구조화된 출력",
+                        "parameters": TradingDecision.model_json_schema()
+                    }
+                }],
+                tool_choice={"type": "function", "function": {"name": "get_trading_decision"}}
+            )
         )
         
         # Structured output 파싱
-        tool_calls = response.choices[0].message.tool_calls
+        tool_calls = response.tool_calls
         if tool_calls and len(tool_calls) > 0:
             arguments = json.loads(tool_calls[0].function.arguments)
             decision = TradingDecision(**arguments)
@@ -364,7 +360,7 @@ def ai_trading_decision_with_vision(market_data: Dict[str, Any], chart_image_bas
     """Vision API를 사용한 AI 매매 결정 함수"""
     print("=== AI 매매 결정 분석 중 (Vision API 포함) ===")
     
-    client = OpenAI()
+    client = genai.GenerativeModel('gemini-pro') # Changed from OpenAI to Gemini
     
     # Vision API를 위한 시스템 메시지
     system_message = """
@@ -445,24 +441,25 @@ def ai_trading_decision_with_vision(market_data: Dict[str, Any], chart_image_bas
         
         messages.append({"role": "user", "content": user_content})
         
-        response = client.chat.completions.create(
-            model="gpt-4o",
-            messages=messages,
-            response_format={"type": "json_object"},
-            temperature=0.3,
-            tools=[{
-                "type": "function",
-                "function": {
-                    "name": "get_trading_decision_with_vision",
-                    "description": "비트코인 매매 결정을 위한 구조화된 출력 (Vision API 포함)",
-                    "parameters": TradingDecision.model_json_schema()
-                }
-            }],
-            tool_choice={"type": "function", "function": {"name": "get_trading_decision_with_vision"}}
+        response = client.generate_content(
+            prompt=f"Please analyze this Bitcoin market data with technical indicators and the provided chart image to provide trading decision: {json.dumps(market_data, default=str)}",
+            generation_config=genai.GenerateContentRequest.GenerationConfig(
+                max_output_tokens=500,
+                temperature=0.3,
+                tools=[{
+                    "type": "function",
+                    "function": {
+                        "name": "get_trading_decision_with_vision",
+                        "description": "비트코인 매매 결정을 위한 구조화된 출력 (Vision API 포함)",
+                        "parameters": TradingDecision.model_json_schema()
+                    }
+                }],
+                tool_choice={"type": "function", "function": {"name": "get_trading_decision_with_vision"}}
+            )
         )
         
         # Structured output 파싱
-        tool_calls = response.choices[0].message.tool_calls
+        tool_calls = response.tool_calls
         if tool_calls and len(tool_calls) > 0:
             arguments = json.loads(tool_calls[0].function.arguments)
             decision = TradingDecision(**arguments)

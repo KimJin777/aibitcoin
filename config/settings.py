@@ -13,6 +13,7 @@ load_dotenv()
 UPBIT_ACCESS_KEY = os.getenv("UPBIT_ACCESS_KEY")
 UPBIT_SECRET_KEY = os.getenv("UPBIT_SECRET_KEY")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 SERP_API_KEY = os.getenv("SERP_API_KEY")
 
 # 트레이딩 설정
@@ -61,8 +62,8 @@ def validate_api_keys():
         missing_keys.append("UPBIT_ACCESS_KEY")
     if not UPBIT_SECRET_KEY:
         missing_keys.append("UPBIT_SECRET_KEY")
-    if not OPENAI_API_KEY:
-        missing_keys.append("OPENAI_API_KEY")
+    if not GOOGLE_API_KEY:
+        missing_keys.append("GOOGLE_API_KEY")
     
     if missing_keys:
         raise ValueError(f"필수 API 키가 설정되지 않았습니다: {', '.join(missing_keys)}")
