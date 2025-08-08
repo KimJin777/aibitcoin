@@ -12,7 +12,7 @@ from analysis.technical_indicators import calculate_technical_indicators
 from analysis.ai_analysis import create_market_analysis_data, ai_trading_decision_with_indicators, ai_trading_decision_with_vision
 from trading.account import get_investment_status, get_pending_orders, get_recent_orders
 from trading.execution import execute_trading_decision
-from utils.logger import setup_logger, log_trading_decision, log_execution_result
+from utils.logger import get_logger
 from database.connection import init_database
 from database.trade_recorder import save_market_data_record, save_system_log_record
 
@@ -65,16 +65,8 @@ def main_trading_cycle_with_vision(upbit, logger):
             print("기존 방식으로 진행합니다.")
             decision = ai_trading_decision_with_indicators(market_data)
         
-        # 로깅
-        if decision:
-            log_trading_decision(logger, decision, market_data)
-        
         # 매매 실행
         execution_result = execute_trading_decision(upbit, decision, investment_status, market_data)
-        
-        # 실행 결과 로깅
-        if decision:
-            log_execution_result(logger, decision, execution_result)
         
         if execution_result and execution_result.get('success', False):
             print("✅ 매매 실행 완료")
@@ -118,16 +110,8 @@ def main_trading_cycle_with_indicators(upbit, logger):
         # AI 매매 결정 (기술적 지표, 공포탐욕지수, 뉴스 포함)
         decision = ai_trading_decision_with_indicators(market_data)
         
-        # 로깅
-        if decision:
-            log_trading_decision(logger, decision, market_data)
-        
         # 매매 실행
         execution_result = execute_trading_decision(upbit, decision, investment_status, market_data)
-        
-        # 실행 결과 로깅
-        if decision:
-            log_execution_result(logger, decision, execution_result)
         
         if execution_result and execution_result.get('success', False):
             print("✅ 매매 실행 완료")
@@ -152,7 +136,7 @@ def main():
         return
     
     # 로거 설정
-    logger = setup_logger()
+    logger = get_logger()
     
     # 데이터베이스 초기화
     print("🗄️ 데이터베이스 초기화 중...")
