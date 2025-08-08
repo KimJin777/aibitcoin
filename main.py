@@ -48,15 +48,23 @@ def main_trading_cycle_with_vision(upbit, logger):
         
         # 차트 스크린샷 캡처 및 base64 인코딩
         print("📸 차트 스크린샷을 캡처합니다...")
+        screenshot_start_time = time.time()
         try:
             create_images_directory()
             screenshot_result = capture_upbit_screenshot()
+            screenshot_time = time.time() - screenshot_start_time
+            print(f"⏱️ 스크린샷 캡처 시간: {screenshot_time:.2f}초")
+            
             if screenshot_result:
                 filepath, chart_image_base64 = screenshot_result
                 print(f"✅ 차트 스크린샷 캡처 완료: {filepath}")
                 
                 # AI 매매 결정 (Vision API 포함)
+                vision_start_time = time.time()
                 decision = ai_trading_decision_with_vision(market_data, chart_image_base64)
+                vision_time = time.time() - vision_start_time
+                print(f"⏱️ Vision API 분석 시간: {vision_time:.2f}초")
+                logger.info(f"Vision API 분석 완료 - 스크린샷: {screenshot_time:.2f}초, 분석: {vision_time:.2f}초")
             else:
                 print("⚠️ 차트 스크린샷 캡처 실패, 기존 방식으로 진행합니다.")
                 decision = ai_trading_decision_with_indicators(market_data)

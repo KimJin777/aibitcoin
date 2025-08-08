@@ -17,7 +17,12 @@ from webdriver_manager.chrome import ChromeDriverManager
 from PIL import Image
 import io
 from typing import Optional, Tuple
-from config.settings import SCREENSHOT_WINDOW_SIZE, SCREENSHOT_MAX_SIZE_MB, SCREENSHOT_QUALITY
+from config.settings import (
+    SCREENSHOT_WINDOW_SIZE, SCREENSHOT_MAX_SIZE_MB, SCREENSHOT_QUALITY,
+    SCREENSHOT_WAIT_TIME, SCREENSHOT_ADDITIONAL_WAIT, SCREENSHOT_CHART_WAIT,
+    BROWSER_HEADLESS, BROWSER_DISABLE_IMAGES, BROWSER_DISABLE_JS, BROWSER_DISABLE_CSS,
+    BROWSER_PAGE_LOAD_STRATEGY
+)
 
 def optimize_image(image_path: str, max_size_mb: float = SCREENSHOT_MAX_SIZE_MB, quality: int = SCREENSHOT_QUALITY) -> Tuple[bytes, dict]:
     """이미지를 최적화하여 파일 크기를 줄이고 품질을 유지"""
@@ -86,28 +91,62 @@ def optimize_image(image_path: str, max_size_mb: float = SCREENSHOT_MAX_SIZE_MB,
             return f.read(), {'error': str(e)}
 
 def setup_driver() -> webdriver.Chrome:
-    """Chrome 드라이버 설정"""
+    """Chrome 드라이버 설정 (최적화된 버전)"""
     chrome_options = Options()
     
     # 창 크기 설정
     chrome_options.add_argument(f"--window-size={SCREENSHOT_WINDOW_SIZE[0]},{SCREENSHOT_WINDOW_SIZE[1]}")
     
-    # 기타 옵션들
+    # 성능 최적화 옵션들
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--disable-dev-shm-usage")
     chrome_options.add_argument("--disable-gpu")
     chrome_options.add_argument("--disable-extensions")
     chrome_options.add_argument("--disable-plugins")
-    chrome_options.add_argument("--disable-images")  # 이미지 로딩 비활성화로 속도 향상
     
-    # User-Agent 설정
+    # 설정 파일 기반 최적화 옵션들
+    if BROWSER_DISABLE_IMAGES:
+        chrome_options.add_argument("--disable-images")  # 이미지 로딩 비활성화로 속도 향상
+    if BROWSER_DISABLE_JS:
+        chrome_options.add_argument("--disable-javascript")  # JavaScript 비활성화 (차트는 이미 로드됨)
+    if BROWSER_DISABLE_CSS:
+        chrome_options.add_argument("--disable-css")  # CSS 비활성화
+    
+    chrome_options.add_argument("--disable-background-timer-throttling")
+    chrome_options.add_argument("--disable-backgrounding-occluded-windows")
+    chrome_options.add_argument("--disable-renderer-backgrounding")
+    chrome_options.add_argument("--disable-features=TranslateUI")
+    chrome_options.add_argument("--disable-ipc-flooding-protection")
+    chrome_options.add_argument("--memory-pressure-off")
+    chrome_options.add_argument("--max_old_space_size=4096")
+    
+    # 헤드리스 모드 (백그라운드 실행)
+    if BROWSER_HEADLESS:
+        chrome_options.add_argument("--headless")
+    
+    # 사용자 에이전트 설정
     chrome_options.add_argument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
     
-    # ChromeDriver 자동 설치 및 설정
-    service = Service(ChromeDriverManager().install())
-    driver = webdriver.Chrome(service=service, options=chrome_options)
+    # 로그 레벨 최소화
+    chrome_options.add_argument("--log-level=3")
+    chrome_options.add_experimental_option('excludeSwitches', ['enable-logging'])
     
-    return driver
+    # 페이지 로드 전략 설정
+    chrome_options.page_load_strategy = BROWSER_PAGE_LOAD_STRATEGY  # DOM이 준비되면 즉시 로드 완료로 간주
+    
+    try:
+        service = Service(ChromeDriverManager().install())
+        driver = webdriver.Chrome(service=service, options=chrome_options)
+        
+        # 페이지 로드 타임아웃 설정
+        driver.set_page_load_timeout(SCREENSHOT_WAIT_TIME)
+        driver.implicitly_wait(5)
+        
+        return driver
+        
+    except Exception as e:
+        print(f"❌ Chrome 드라이버 설정 중 오류: {e}")
+        raise e
 
 def create_images_directory():
     """images 디렉토리 생성"""
@@ -116,7 +155,7 @@ def create_images_directory():
         print("📁 images 디렉토리를 생성했습니다.")
 
 def capture_upbit_screenshot() -> Optional[Tuple[str, str]]:
-    """업비트 페이지 스크린샷 캡쳐"""
+    """업비트 페이지 스크린샷 캡쳐 (최적화된 버전)"""
     url = "https://upbit.com/exchange?code=CRIX.UPBIT.KRW-BTC"
     
     print("🚀 업비트 페이지 스크린샷 캡쳐를 시작합니다...")
@@ -131,8 +170,8 @@ def capture_upbit_screenshot() -> Optional[Tuple[str, str]]:
         print("⏳ 페이지를 로딩 중입니다...")
         driver.get(url)
         
-        # 페이지가 완전히 로드될 때까지 대기
-        wait = WebDriverWait(driver, 30)
+        # 페이지가 완전히 로드될 때까지 대기 (시간 단축)
+        wait = WebDriverWait(driver, SCREENSHOT_WAIT_TIME)  # 설정 파일 값 사용
         
         # 메인 콘텐츠가 로드될 때까지 대기
         try:
@@ -142,57 +181,24 @@ def capture_upbit_screenshot() -> Optional[Tuple[str, str]]:
             print(f"⚠️ 페이지 로딩 대기 중 오류: {e}")
             print("계속 진행합니다...")
         
-        # 추가 대기 시간 (동적 콘텐츠 로딩을 위해)
-        time.sleep(5)
+        # 최소한의 대기 시간 (동적 콘텐츠 로딩을 위해)
+        time.sleep(SCREENSHOT_ADDITIONAL_WAIT)  # 설정 파일 값 사용
         
-        # 차트 시간 설정 변경
-        print("⏰ 차트 시간 설정을 1시간으로 변경합니다...")
+        # 차트 설정 변경 시도 (실패해도 계속 진행)
+        print("⏰ 차트 설정을 최적화합니다...")
         try:
-            # 시간 설정 버튼 클릭
-            time_button_xpath = "/html/body/div[1]/div[2]/div[3]/div/section[1]/article[1]/div/span[2]/div/div/div[1]/div[1]/div/cq-menu[1]/span/cq-clickable"
-            time_button = wait.until(EC.element_to_be_clickable((By.XPATH, time_button_xpath)))
-            time_button.click()
-            print("✅ 시간 설정 버튼을 클릭했습니다.")
+            # 차트가 로드될 때까지 짧게 대기
+            time.sleep(SCREENSHOT_CHART_WAIT)  # 설정 파일 값 사용
             
-            # 메뉴가 나타날 때까지 대기
-            time.sleep(2)
-            
-            # 1시간 옵션 클릭
-            one_hour_xpath = "/html/body/div[1]/div[2]/div[3]/div/section[1]/article[1]/div/span[2]/div/div/div[1]/div[1]/div/cq-menu[1]/cq-menu-dropdown/cq-item[8]"
-            one_hour_option = wait.until(EC.element_to_be_clickable((By.XPATH, one_hour_xpath)))
-            one_hour_option.click()
-            print("✅ 1시간 옵션을 선택했습니다.")
-            
-            # 설정 변경 후 차트가 업데이트될 때까지 대기
-            time.sleep(3)
-            
+            # 차트 영역이 있는지 확인
+            chart_elements = driver.find_elements(By.CSS_SELECTOR, "div[class*='chart'], canvas, svg")
+            if chart_elements:
+                print("✅ 차트 요소를 발견했습니다.")
+            else:
+                print("⚠️ 차트 요소를 찾을 수 없습니다. 기본 스크린샷을 진행합니다.")
+                
         except Exception as e:
-            print(f"⚠️ 차트 시간 설정 변경 중 오류: {e}")
-            print("기본 설정으로 계속 진행합니다...")
-        
-        # 볼린저 밴드 추가
-        print("📊 볼린저 밴드를 추가합니다...")
-        try:
-            # 지표 설정 버튼 클릭
-            indicator_button_xpath = "/html/body/div[1]/div[2]/div[3]/div/section[1]/article[1]/div/span[2]/div/div/div[1]/div[1]/div/cq-menu[3]/span"
-            indicator_button = wait.until(EC.element_to_be_clickable((By.XPATH, indicator_button_xpath)))
-            indicator_button.click()
-            print("✅ 지표 설정 버튼을 클릭했습니다.")
-            
-            # 메뉴가 나타날 때까지 대기
-            time.sleep(2)
-            
-            # 볼린저 밴드 옵션 클릭
-            bollinger_xpath = "/html/body/div[1]/div[2]/div[3]/div/section[1]/article[1]/div/span[2]/div/div/div[1]/div[1]/div/cq-menu[3]/cq-menu-dropdown/cq-scroll/cq-studies/cq-studies-content/cq-item[2]"
-            bollinger_option = wait.until(EC.element_to_be_clickable((By.XPATH, bollinger_xpath)))
-            bollinger_option.click()
-            print("✅ 볼린저 밴드를 선택했습니다.")
-            
-            # 설정 변경 후 차트가 업데이트될 때까지 대기
-            time.sleep(3)
-            
-        except Exception as e:
-            print(f"⚠️ 볼린저 밴드 추가 중 오류: {e}")
+            print(f"⚠️ 차트 설정 확인 중 오류: {e}")
             print("기본 설정으로 계속 진행합니다...")
         
         # 현재 시간으로 파일명 생성
@@ -203,16 +209,19 @@ def capture_upbit_screenshot() -> Optional[Tuple[str, str]]:
         # 전체 페이지 스크린샷 캡쳐
         print("📸 전체 페이지 스크린샷을 캡쳐 중입니다...")
         
-        # 페이지 전체 높이 계산
-        total_height = driver.execute_script("return document.body.scrollHeight")
-        driver.set_window_size(1920, total_height)
+        # 페이지 전체 높이 계산 (최적화)
+        try:
+            total_height = driver.execute_script("return Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);")
+            driver.set_window_size(1920, min(total_height, 3000))  # 최대 높이 제한
+        except:
+            driver.set_window_size(1920, 1080)  # 기본 크기
         
         # 스크린샷 촬영
         driver.save_screenshot(filepath)
         
-        # 이미지 최적화
+        # 이미지 최적화 (더 강한 압축)
         print("🔧 이미지를 최적화합니다...")
-        optimized_bytes, optimization_info = optimize_image(filepath, SCREENSHOT_MAX_SIZE_MB, SCREENSHOT_QUALITY)
+        optimized_bytes, optimization_info = optimize_image(filepath, SCREENSHOT_MAX_SIZE_MB * 0.3, SCREENSHOT_QUALITY - 15)  # 더 작은 크기, 더 낮은 품질
         
         # 최적화된 이미지를 Base64 인코딩
         image_base64 = base64.b64encode(optimized_bytes).decode('utf-8')

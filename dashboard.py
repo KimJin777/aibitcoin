@@ -90,6 +90,33 @@ class TradingDashboard:
         except Exception as e:
             st.error(f"반성 데이터 조회 오류: {e}")
             return pd.DataFrame()
+
+    def get_reflection_detail(self, reflection_id: int) -> pd.DataFrame:
+        """특정 반성 상세 정보 조회"""
+        connection = self.get_connection()
+        if not connection:
+            return pd.DataFrame()
+        
+        try:
+            query = """
+            SELECT 
+                tr.id, tr.trade_id, tr.reflection_type, tr.performance_score,
+                tr.profit_loss, tr.profit_loss_percentage, tr.decision_quality_score,
+                tr.timing_score, tr.risk_management_score, tr.ai_analysis,
+                tr.improvement_suggestions, tr.lessons_learned, tr.created_at,
+                t.decision, t.action, t.price
+            FROM trading_reflections tr
+            JOIN trades t ON tr.trade_id = t.id
+            WHERE tr.id = %s
+            LIMIT 1
+            """
+            
+            df = pd.read_sql(query, connection, params=(reflection_id,))
+            connection.close()
+            return df
+        except Exception as e:
+            st.error(f"반성 상세 정보 조회 오류: {e}")
+            return pd.DataFrame()
     
     def get_performance_metrics(self, days: int = 7) -> pd.DataFrame:
         """성과 지표 조회"""
@@ -184,6 +211,30 @@ class TradingDashboard:
         except Exception as e:
             st.error(f"전략 개선 제안 조회 오류: {e}")
             return pd.DataFrame()
+    
+    def update_strategy_improvement_status(self, improvement_id: int, new_status: str) -> bool:
+        """전략 개선 상태 업데이트"""
+        connection = self.get_connection()
+        if not connection:
+            return False
+        
+        try:
+            cursor = connection.cursor()
+            query = """
+            UPDATE strategy_improvements 
+            SET status = %s, updated_at = CURRENT_TIMESTAMP
+            WHERE id = %s
+            """
+            
+            cursor.execute(query, (new_status, improvement_id))
+            connection.commit()
+            cursor.close()
+            connection.close()
+            
+            return True
+        except Exception as e:
+            st.error(f"전략 개선 상태 업데이트 오류: {e}")
+            return False
     
     def get_market_data(self, limit: int = 100) -> pd.DataFrame:
         """시장 데이터 조회"""
@@ -395,6 +446,48 @@ def show_insight_detail(dashboard: TradingDashboard, insight_id: int):
     if st.button("← 뒤로가기"):
         st.rerun()
 
+def show_reflection_detail(dashboard: TradingDashboard, reflection_id: int):
+    """반성 상세 정보 표시"""
+    detail = dashboard.get_reflection_detail(reflection_id)
+    if detail.empty:
+        st.error("반성을 찾을 수 없습니다.")
+        return
+    r = detail.iloc[0]
+
+    st.subheader(f"🤔 반성 #{r['id']} (거래ID: {r['trade_id']})")
+    st.markdown("---")
+
+    # 상단 핵심 지표
+    c1, c2, c3, c4 = st.columns(4)
+    with c1:
+        st.metric("성과점수", f"{r.get('performance_score', 0):.2f}")
+        st.metric("손익", f"{r.get('profit_loss', 0):,.0f}")
+    with c2:
+        st.metric("의사결정 품질", f"{r.get('decision_quality_score', 0):.2f}")
+        st.metric("타이밍", f"{r.get('timing_score', 0):.2f}")
+    with c3:
+        st.metric("리스크관리", f"{r.get('risk_management_score', 0):.2f}")
+        st.metric("손익률", f"{r.get('profit_loss_percentage', 0):.2f}%")
+    with c4:
+        st.metric("행동", f"{r.get('action', '')}")
+        st.metric("가격", f"{r.get('price', 0):,.0f}")
+
+    st.markdown("---")
+
+    # 텍스트 섹션
+    st.subheader("🧠 AI 분석")
+    st.write(r.get('ai_analysis', ''))
+
+    st.subheader("🔧 개선 제안")
+    st.write(r.get('improvement_suggestions', ''))
+
+    st.subheader("📚 배운 점")
+    st.write(r.get('lessons_learned', ''))
+
+    # 뒤로가기
+    if st.button("← 뒤로가기"):
+        st.rerun()
+
 def main():
     """메인 대시보드"""
     st.set_page_config(
@@ -409,6 +502,10 @@ def main():
         st.session_state.show_insight_detail = False
     if 'selected_insight_id' not in st.session_state:
         st.session_state.selected_insight_id = None
+    if 'show_reflection_detail' not in st.session_state:
+        st.session_state.show_reflection_detail = False
+    if 'selected_reflection_id' not in st.session_state:
+        st.session_state.selected_reflection_id = None
     
     # 대시보드 객체 생성
     dashboard = TradingDashboard()
@@ -450,6 +547,39 @@ def main():
             st.session_state.selected_insight_id = None
             st.rerun()
         
+        return
+
+    # 반성 상세 보기 모드
+    if st.session_state.show_reflection_detail:
+        st.title("🤔 반성 상세보기")
+        st.markdown("---")
+
+        reflections = dashboard.get_trading_reflections(50)
+        if not reflections.empty:
+            st.subheader("📋 반성 목록")
+            for _, row in reflections.iterrows():
+                c1, c2, c3, c4 = st.columns([3,1,1,1])
+                with c1:
+                    st.write(f"거래ID: {row['trade_id']} | 유형: {row['reflection_type']}")
+                    st.write(f"성과점수: {row.get('performance_score', 0):.2f} | 손익: {row.get('profit_loss', 0):,.0f}")
+                with c2:
+                    st.write(f"의사결정: {row.get('decision', '')}")
+                with c3:
+                    st.write(f"행동: {row.get('action', '')}")
+                with c4:
+                    if st.button("상세보기", key=f"refl_{row['id']}"):
+                        st.session_state.selected_reflection_id = row['id']
+                        st.rerun()
+                st.markdown("---")
+
+            if st.session_state.selected_reflection_id:
+                show_reflection_detail(dashboard, st.session_state.selected_reflection_id)
+
+        if st.button("← 대시보드로 돌아가기"):
+            st.session_state.show_reflection_detail = False
+            st.session_state.selected_reflection_id = None
+            st.rerun()
+
         return
     
     # 제목
@@ -512,6 +642,10 @@ def main():
             st.metric("주기적 반성", reflection_types.get('daily', 0) + 
                      reflection_types.get('weekly', 0) + 
                      reflection_types.get('monthly', 0))
+
+            # 반성 상세보기 진입 버튼
+            if st.button("🔍 반성 상세보기", key="reflection_detail_btn"):
+                st.session_state.show_reflection_detail = True
     
     # 4. 학습 인사이트
     with col4:
@@ -632,6 +766,36 @@ def main():
             display_df.columns = ['개선유형', '이유', '예상효과', '성공지표', '상태', '생성일']
             
             st.dataframe(display_df, use_container_width=True)
+            
+            # 전략 개선 상태 변경 기능
+            st.subheader("🔧 전략 개선 상태 관리")
+            
+            for _, improvement in improvements.iterrows():
+                col1, col2, col3 = st.columns([3, 1, 1])
+                
+                with col1:
+                    st.write(f"**{improvement['improvement_type']}**: {improvement['reason'][:50]}...")
+                    st.write(f"현재 상태: {improvement['status']} | 성공지표: {improvement['success_metric']:.2f}")
+                
+                with col2:
+                    if improvement['status'] == 'proposed':
+                        if st.button(f"적용", key=f"apply_{improvement['id']}"):
+                            if dashboard.update_strategy_improvement_status(improvement['id'], 'implemented'):
+                                st.success("✅ 전략 개선이 적용되었습니다!")
+                                st.rerun()
+                            else:
+                                st.error("❌ 적용 실패")
+                
+                with col3:
+                    if improvement['status'] == 'implemented':
+                        if st.button(f"검증", key=f"validate_{improvement['id']}"):
+                            if dashboard.update_strategy_improvement_status(improvement['id'], 'validated'):
+                                st.success("✅ 전략 개선이 검증되었습니다!")
+                                st.rerun()
+                            else:
+                                st.error("❌ 검증 실패")
+                
+                st.markdown("---")
         else:
             st.info("전략 개선 제안이 없습니다.")
     
@@ -639,6 +803,36 @@ def main():
     st.markdown("---")
     st.markdown("🔄 자동 새로고침: 30초마다 데이터가 업데이트됩니다.")
     st.markdown("📊 마지막 업데이트: " + datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+    
+    # 개발용: 테스트 전략 개선 생성 (나중에 제거 가능)
+    if st.sidebar.button("🧪 테스트 전략 개선 생성"):
+        try:
+            connection = dashboard.get_connection()
+            cursor = connection.cursor()
+            
+            test_improvements = [
+                ("condition", "기존 진입 조건", "강화된 진입 조건", "승률 개선을 위한 조건 강화", "승률 10% 향상 예상", 0.7, "proposed"),
+                ("risk", "기존 리스크 관리", "강화된 리스크 관리", "최대 낙폭 감소를 위한 리스크 관리 강화", "최대 낙폭 20% 감소 예상", 0.8, "proposed"),
+                ("parameter", "기존 파라미터", "AI 최적화 파라미터", "AI 분석을 통한 파라미터 최적화", "수익률 15% 향상 예상", 0.75, "proposed")
+            ]
+            
+            for improvement in test_improvements:
+                query = """
+                INSERT INTO strategy_improvements 
+                (improvement_type, old_value, new_value, reason, expected_impact, success_metric, status)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                """
+                cursor.execute(query, improvement)
+            
+            connection.commit()
+            cursor.close()
+            connection.close()
+            
+            st.success("✅ 테스트 전략 개선이 생성되었습니다!")
+            st.rerun()
+            
+        except Exception as e:
+            st.error(f"❌ 테스트 데이터 생성 실패: {e}")
 
 if __name__ == "__main__":
     main()

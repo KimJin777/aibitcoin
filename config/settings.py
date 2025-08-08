@@ -40,8 +40,18 @@ NEWS_REGION = "kr"  # 뉴스 지역
 
 # 스크린샷 설정
 SCREENSHOT_WINDOW_SIZE = (1920, 1080)
-SCREENSHOT_MAX_SIZE_MB = 2.0
-SCREENSHOT_QUALITY = 85
+# Vision API 성능 최적화 설정
+VISION_API_TIMEOUT = 20  # Vision API 호출 타임아웃 (초) - 더 짧게
+VISION_API_MAX_TOKENS = 200  # Vision API 최대 출력 토큰 수 - 더 적게
+VISION_API_TEMPERATURE = 0.2  # Vision API temperature 설정 - 더 낮게
+
+# 스크린샷 최적화 설정
+SCREENSHOT_WAIT_TIME = 10  # 페이지 로딩 대기 시간 (초) - 더 짧게
+SCREENSHOT_ADDITIONAL_WAIT = 2  # 추가 대기 시간 (초) - 더 짧게
+SCREENSHOT_MENU_WAIT = 1  # 메뉴 대기 시간 (초)
+SCREENSHOT_CHART_WAIT = 1  # 차트 업데이트 대기 시간 (초) - 더 짧게
+SCREENSHOT_MAX_SIZE_MB = 0.5  # 스크린샷 최대 크기 (MB) - 더 작게 설정
+SCREENSHOT_QUALITY = 60  # 스크린샷 품질 (0-100) - 더 낮게 설정
 
 # 실행 설정
 ANALYSIS_INTERVAL = 300  # 분석 간격 (초)
@@ -53,6 +63,17 @@ DB_PORT = int(os.getenv("DB_PORT", "3306"))
 DB_NAME = os.getenv("DB_NAME", "gptbitcoin")
 DB_USER = os.getenv("DB_USER", "root")
 DB_PASSWORD = os.getenv("DB_PASSWORD", "kimjink@@7")
+
+# 전략 개선 적용 설정
+STRATEGY_IMPROVEMENT_ENABLED = True  # 전략 개선 적용 비활성화 (성능 최적화)
+STRATEGY_IMPROVEMENT_CACHE_TIME = 300  # 전략 개선 캐시 시간 (초)
+
+# 브라우저 최적화 설정
+BROWSER_HEADLESS = True  # 헤드리스 모드 활성화
+BROWSER_DISABLE_IMAGES = True  # 이미지 로딩 비활성화
+BROWSER_DISABLE_JS = True  # JavaScript 비활성화
+BROWSER_DISABLE_CSS = True  # CSS 비활성화
+BROWSER_PAGE_LOAD_STRATEGY = 'eager'  # 페이지 로드 전략
 
 def validate_api_keys():
     """API 키 유효성 검사"""

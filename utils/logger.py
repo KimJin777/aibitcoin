@@ -3,6 +3,7 @@
 """
 
 import logging
+import os
 from datetime import datetime
 from typing import Optional
 
@@ -26,13 +27,27 @@ def get_logger(name: str = __name__, level: int = logging.INFO) -> logging.Logge
         console_handler = logging.StreamHandler()
         console_handler.setLevel(level)
         
+        # 파일 핸들러
+        logs_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'logs')
+        os.makedirs(logs_dir, exist_ok=True)
+        
+        # 날짜별 로그 파일
+        today = datetime.now().strftime('%Y%m%d')
+        log_filename = f"{name}_{today}.log"
+        log_filepath = os.path.join(logs_dir, log_filename)
+        
+        file_handler = logging.FileHandler(log_filepath, encoding='utf-8')
+        file_handler.setLevel(level)
+        
         # 포맷터
         formatter = logging.Formatter(
             '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
         )
         console_handler.setFormatter(formatter)
+        file_handler.setFormatter(formatter)
         
         logger.addHandler(console_handler)
+        logger.addHandler(file_handler)
     
     return logger
 

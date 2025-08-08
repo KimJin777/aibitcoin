@@ -8,7 +8,10 @@ from datetime import datetime
 from typing import Optional, Dict, Any, List
 import google.generativeai as genai
 from .models import TradingDecision
-from config.settings import GOOGLE_API_KEY
+from config.settings import (
+    GOOGLE_API_KEY, VISION_API_TIMEOUT, VISION_API_MAX_TOKENS, 
+    VISION_API_TEMPERATURE, STRATEGY_IMPROVEMENT_ENABLED
+)
 
 # Gemini API 설정
 genai.configure(api_key=GOOGLE_API_KEY)
@@ -250,6 +253,74 @@ def generate_improvement_suggestions(performance_analysis: Dict[str, Any]) -> Li
     
     return suggestions
 
+def get_active_strategy_improvements() -> List[Dict[str, Any]]:
+    """활성화된 전략 개선 제안 조회"""
+    try:
+        from database.connection import get_db_connection
+        connection = get_db_connection()
+        cursor = connection.cursor(dictionary=True)
+        
+        query = """
+        SELECT * FROM strategy_improvements 
+        WHERE status IN ('implemented', 'validated')
+        ORDER BY success_metric DESC, created_at DESC
+        LIMIT 10
+        """
+        
+        cursor.execute(query)
+        improvements = cursor.fetchall()
+        cursor.close()
+        connection.close()
+        
+        return improvements
+        
+    except Exception as e:
+        print(f"❌ 전략 개선 조회 오류: {e}")
+        return []
+
+def apply_strategy_improvements(decision: Dict[str, Any], improvements: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """전략 개선을 매매 결정에 적용"""
+    if not improvements:
+        return decision
+    
+    print("🔧 전략 개선 적용 중...")
+    
+    # 개선 타입별 적용
+    for improvement in improvements:
+        improvement_type = improvement.get('improvement_type', '')
+        new_value = improvement.get('new_value', '')
+        success_metric = improvement.get('success_metric', 0.5)
+        
+        print(f"  - {improvement_type}: {new_value[:50]}... (성공지표: {success_metric:.2f})")
+        
+        # 개선 타입별 적용 로직
+        if improvement_type == 'condition':
+            # 진입 조건 강화
+            if decision.get('confidence', 0) < 0.7:
+                decision['confidence'] = min(0.9, decision.get('confidence', 0) + 0.1)
+                decision['reason'] += f" [전략개선: 진입조건 강화 적용]"
+                
+        elif improvement_type == 'parameter':
+            # 파라미터 최적화
+            if decision.get('risk_level') == 'high':
+                decision['risk_level'] = 'medium'
+                decision['reason'] += f" [전략개선: 리스크 파라미터 조정]"
+                
+        elif improvement_type == 'risk':
+            # 리스크 관리 강화
+            if decision.get('decision') == 'buy':
+                # 매수 시 더 보수적인 접근
+                decision['confidence'] = max(0.6, decision.get('confidence', 0) - 0.1)
+                decision['reason'] += f" [전략개선: 리스크 관리 강화]"
+                
+        elif improvement_type == 'timing':
+            # 타이밍 개선
+            if decision.get('decision') == 'hold':
+                # 보유 결정 시 더 적극적인 모니터링
+                decision['reason'] += f" [전략개선: 타이밍 최적화 적용]"
+    
+    return decision
+
 def ai_trading_decision_with_indicators(market_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     """기술적 지표를 포함한 AI 매매 결정 함수"""
     print("=== AI 매매 결정 분석 중 (기술적 지표 포함) ===")
@@ -342,6 +413,17 @@ def ai_trading_decision_with_indicators(market_data: Dict[str, Any]) -> Optional
             "reason": analysis_text
         }
         
+        # 전략 개선 적용
+        if STRATEGY_IMPROVEMENT_ENABLED:
+            active_improvements = get_active_strategy_improvements()
+            if active_improvements:
+                decision = apply_strategy_improvements(decision, active_improvements)
+                print(f"✅ {len(active_improvements)}개 전략 개선 적용 완료")
+            else:
+                print("ℹ️ 적용할 전략 개선이 없습니다.")
+        else:
+            print("ℹ️ 전략 개선 적용이 비활성화되어 있습니다.")
+        
         return decision
             
     except Exception as e:
@@ -349,113 +431,46 @@ def ai_trading_decision_with_indicators(market_data: Dict[str, Any]) -> Optional
         return None
 
 def ai_trading_decision_with_vision(market_data: Dict[str, Any], chart_image_base64: Optional[str] = None) -> Optional[Dict[str, Any]]:
-    """Vision API를 사용한 AI 매매 결정 함수"""
+    """Vision API를 사용한 AI 매매 결정 함수 (최적화된 버전)"""
     print("=== AI 매매 결정 분석 중 (Vision API 포함) ===")
     
     client = genai.GenerativeModel('gemini-pro') # Changed from OpenAI to Gemini
     
-    # Vision API를 위한 시스템 메시지
+    # Vision API를 위한 매우 간소화된 시스템 메시지
     system_message = """
-    You are a Bitcoin investment expert with deep knowledge of technical analysis, market psychology, and news sentiment analysis.
-    
-    You will analyze:
-    1. Market data including technical indicators, Fear and Greed Index, and news sentiment
-    2. A chart screenshot showing the current Bitcoin price chart with technical indicators (1-hour timeframe with Bollinger Bands)
-    
-    When analyzing the chart image, focus on:
-    - Price action patterns and trends
-    - Technical indicator positions (Bollinger Bands, moving averages, etc.)
-    - Support and resistance levels
-    - Volume patterns
-    - Chart patterns (head and shoulders, triangles, etc.)
-    - Candlestick patterns
-    - Overall market structure and momentum
-    
-    Consider these technical analysis factors:
-    - Moving Averages (SMA, EMA) trends and crossovers
-    - RSI overbought/oversold conditions (RSI > 70 = overbought, RSI < 30 = oversold)
-    - MACD signal line crossovers and histogram patterns
-    - Bollinger Bands position and width (BB_Position: 0-1, where 0.5 is middle)
-    - Stochastic oscillator signals (K and D lines)
-    - Williams %R overbought/oversold levels
-    - ATR for volatility assessment
-    - ADX for trend strength (ADX > 25 = strong trend)
-    - CCI for momentum (CCI > 100 = overbought, CCI < -100 = oversold)
-    - ROC for momentum confirmation
-    
-    Fear and Greed Index Analysis:
-    - Extreme Fear (0-25): Often indicates oversold conditions, potential buying opportunities
-    - Fear (26-45): Market uncertainty, cautious approach recommended
-    - Neutral (46-55): Balanced market sentiment
-    - Greed (56-75): Market optimism, watch for overbought conditions
-    - Extreme Greed (76-100): Often indicates overbought conditions, potential selling opportunities
-    
-    News Sentiment Analysis:
-    - Positive news sentiment: May indicate bullish momentum or positive market sentiment
-    - Negative news sentiment: May indicate bearish pressure or negative market sentiment
-    - Neutral news sentiment: Balanced market sentiment
-    - Consider news sentiment in combination with technical indicators for confirmation
-    
-    Be conservative and consider risk management in your recommendations.
-    Use technical indicators to confirm signals rather than relying on single indicators.
-    Consider market sentiment from Fear and Greed Index for contrarian opportunities.
-    Consider news sentiment for additional market psychology insights.
-    
-    Provide your analysis in JSON format using the structured output function.
+    You are a Bitcoin trading expert. Analyze the chart and market data quickly.
+    Focus on: price trends, support/resistance, key indicators.
+    Provide a brief trading decision: buy/sell/hold with confidence level.
     """
     
     try:
-        # 메시지 구성
-        messages = [
-            {
-                "role": "system",
-                "content": system_message
-            }
-        ]
-        
-        # 차트 이미지가 있는 경우 Vision API 사용
-        if chart_image_base64:
-            user_content = [
-                {
-                    "type": "text",
-                    "text": f"Please analyze this Bitcoin market data with technical indicators and the provided chart image to provide trading decision: {json.dumps(market_data, default=str)}"
-                },
-                {
-                    "type": "image_url",
-                    "image_url": {
-                        "url": f"data:image/png;base64,{chart_image_base64}"
-                    }
-                }
-            ]
-        else:
-            # 이미지가 없는 경우 기존 방식 사용
-            user_content = f"Please analyze this Bitcoin market data with technical indicators and provide trading decision: {json.dumps(market_data, default=str)}"
-        
-        messages.append({"role": "user", "content": user_content})
-        
         # Vision API를 위한 Gemini 모델 사용
         vision_model = genai.GenerativeModel('gemini-1.5-flash')
         
         if chart_image_base64:
-            # 이미지가 있는 경우 Vision API 사용
+            # 이미지가 있는 경우 Vision API 사용 (최적화된 설정)
             image_data = base64.b64decode(chart_image_base64)
+            
+            # 매우 간소화된 프롬프트
+            prompt = f"Analyze Bitcoin chart and data for trading decision: {json.dumps(market_data, default=str)}"
+            
             response = vision_model.generate_content(
                 [
-                    f"Please analyze this Bitcoin market data with technical indicators and the provided chart image to provide trading decision: {json.dumps(market_data, default=str)}",
+                    prompt,
                     {"mime_type": "image/png", "data": image_data}
                 ],
                 generation_config=genai.types.GenerationConfig(
-                    max_output_tokens=500,
-                    temperature=0.3
+                    max_output_tokens=VISION_API_MAX_TOKENS,  # 설정 파일 값 사용
+                    temperature=VISION_API_TEMPERATURE  # 설정 파일 값 사용
                 )
             )
         else:
             # 이미지가 없는 경우 일반 텍스트 분석
             response = client.generate_content(
-                f"Please analyze this Bitcoin market data with technical indicators and provide trading decision: {json.dumps(market_data, default=str)}",
+                f"Analyze Bitcoin market data for trading decision: {json.dumps(market_data, default=str)}",
                 generation_config=genai.types.GenerationConfig(
-                    max_output_tokens=500,
-                    temperature=0.3
+                    max_output_tokens=VISION_API_MAX_TOKENS,  # 설정 파일 값 사용
+                    temperature=VISION_API_TEMPERATURE  # 설정 파일 값 사용
                 )
             )
         
@@ -482,6 +497,17 @@ def ai_trading_decision_with_vision(market_data: Dict[str, Any], chart_image_bas
             },
             "reason": analysis_text
         }
+        
+        # 전략 개선 적용 (선택적)
+        if STRATEGY_IMPROVEMENT_ENABLED:
+            active_improvements = get_active_strategy_improvements()
+            if active_improvements:
+                decision = apply_strategy_improvements(decision, active_improvements)
+                print(f"✅ {len(active_improvements)}개 전략 개선 적용 완료")
+            else:
+                print("ℹ️ 적용할 전략 개선이 없습니다.")
+        else:
+            print("ℹ️ 전략 개선 적용이 비활성화되어 있습니다.")
         
         return decision
             
