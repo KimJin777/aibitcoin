@@ -1,6 +1,6 @@
 # 🚀 비트코인 AI 자동매매 시스템
 
-최신 기술적 지표, 공포탐욕지수, 뉴스 분석을 통합한 고급 비트코인 자동매매 시스템입니다.
+최신 기술적 지표, 공포탐욕지수, 뉴스 분석, **Vision API**를 통합한 고급 비트코인 자동매매 시스템입니다.
 
 ## 📋 주요 기능
 
@@ -19,15 +19,18 @@
 ### 🤖 AI 기반 매매 결정
 - **GPT-4o** 기반 지능형 매매 결정
 - **GPT Vision API** 차트 이미지 분석
+- **Ollama Vision API** 로컬 차트 분석
 - **Structured Outputs** 안정적인 JSON 응답
 - **다중 지표 종합 분석**
 - **리스크 관리** 및 보수적 접근
 
-### 📸 차트 이미지 분석
+### 📸 차트 이미지 분석 (NEW!)
 - **실시간 차트 스크린샷 캡처**
+- **Ollama Vision API** 로컬 이미지 분석
 - **Pillow 라이브러리 이미지 최적화**
 - **1시간 차트 + 볼린저 밴드 설정**
-- **Base64 인코딩으로 OpenAI 전송**
+- **Base64 인코딩으로 AI 전송**
+- **Vision + 시장 데이터 통합 분석**
 
 ### 🗄️ 데이터베이스 관리
 - **MySQL 8.0 데이터베이스 연동**
@@ -50,127 +53,130 @@
 - **성과 지표 시각화 (승률, 수익률, 샤프 비율)**
 - **반성 시스템 데이터 조회**
 - **학습 인사이트 및 전략 개선 제안**
-- **가격 차트 및 거래량 분석**
-- **자동 새로고침 기능**
 
-## 🛠️ 설치 및 설정
+## 🚀 빠른 시작
 
-### 1. 필요한 라이브러리 설치
+### 1. 환경 설정
+
+#### 필수 요구사항
+- Python 3.8+
+- MySQL 8.0+
+- Ollama (로컬 AI 모델용)
+
+#### Ollama 설치 및 모델 다운로드
+```bash
+# Ollama 설치 (Windows)
+# https://ollama.ai/download 에서 다운로드
+
+# Vision 모델 설치
+ollama pull llava:7b
+
+# 텍스트 모델 설치
+ollama pull llama3.1:8b
+```
+
+#### Python 패키지 설치
 ```bash
 pip install -r requirements.txt
 ```
 
-### 2. MySQL 데이터베이스 설정
+### 2. 환경 변수 설정
 
-#### MySQL 8.0 설치 (Windows)
-1. [MySQL Community Server](https://dev.mysql.com/downloads/mysql/) 다운로드
-2. 설치 시 root 비밀번호 설정
-3. MySQL 서비스 시작
+`.env` 파일을 생성하고 다음 내용을 입력하세요:
 
-#### 데이터베이스 생성
-```sql
-CREATE DATABASE gptbitcoin CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-```
-
-### 3. 환경 변수 설정 (.env 파일)
 ```env
-# 업비트 API 키
+# Upbit API
 UPBIT_ACCESS_KEY=your_upbit_access_key
 UPBIT_SECRET_KEY=your_upbit_secret_key
 
-# OpenAI API 키
-OPENAI_API_KEY=your_openai_api_key
-
-# SerpAPI 키 (뉴스 분석용)
-SERP_API_KEY=your_serpapi_key
-
-# MySQL 데이터베이스 설정
+# Database
 DB_HOST=localhost
 DB_PORT=3306
 DB_NAME=gptbitcoin
 DB_USER=root
-DB_PASSWORD=your_mysql_password
+DB_PASSWORD=your_password
+
+# Ollama
+OLLAMA_BASE_URL=http://localhost:11434
+OLLAMA_MODEL=llama3.1:8b
+OLLAMA_VISION_MODEL=llava:7b
+
+# News API (선택사항)
+GOOGLE_API_KEY=your_google_api_key
+SERP_API_KEY=your_serp_api_key
 ```
 
-### 3. API 키 발급 방법
+### 3. 데이터베이스 설정
 
-#### 업비트 API 키
-1. [업비트](https://upbit.com) 로그인
-2. 마이페이지 → Open API 관리
-3. API 키 발급 (읽기/주문 권한 필요)
+MySQL에서 데이터베이스를 생성하세요:
 
-#### OpenAI API 키
-1. [OpenAI Platform](https://platform.openai.com) 가입
-2. API Keys → Create new secret key
+```sql
+CREATE DATABASE gptbitcoin CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+```
 
-#### SerpAPI 키 (선택사항)
-1. [SerpAPI](https://serpapi.com) 가입
-2. API 키 발급 (뉴스 분석 기능 사용시)
+## 🎯 실행 방법
 
-## 🚀 사용 방법
-
-### 메인 자동매매 시스템 실행
+### 기본 실행 (Vision API 포함)
 ```bash
 python main.py
 ```
 
-### 거래 기록 조회
+### 실행 모드 선택
 ```bash
-python view_trades.py
+# Vision API 포함 모드 (기본값)
+python main.py --mode vision
+
+# 기술적 지표만 사용 모드
+python main.py --mode indicators
+
+# 비전 분석 테스트 모드
+python main.py --mode test
 ```
 
-### 반성 시스템 데이터 조회
+### 분석 간격 조정
 ```bash
-python reflection_viewer.py
+# 10분 간격으로 분석
+python main.py --interval 600
+
+# 30분 간격으로 분석
+python main.py --interval 1800
 ```
 
-### 반성 스케줄러 실행 (별도 프로세스)
-```bash
-python scheduler.py
-```
-
-### 실시간 모니터링 대시보드
+### 대시보드 실행
 ```bash
 python run_dashboard.py
-```
-또는
-```bash
-streamlit run dashboard.py
 ```
 
 웹 브라우저에서 http://localhost:8501 으로 접속하여 실시간 모니터링을 확인할 수 있습니다.
 
-### 거래 기록 조회
-```bash
-python view_trades.py
+## 📊 Vision API 분석 기능
+
+### 🔍 차트 이미지 분석
+- **실시간 스크린샷 캡처**: Selenium으로 업비트 차트 자동 캡처
+- **이미지 최적화**: Pillow로 파일 크기 최적화 (2MB 이하)
+- **Vision API 분석**: Ollama llava:7b 모델로 차트 패턴 분석
+- **통합 분석**: Vision + 기술적 지표 + 시장 심리 종합 분석
+
+### 📈 분석 결과 예시
+```json
+{
+    "trend": "상승",
+    "bollinger_position": "중간",
+    "support_level": "0.385",
+    "resistance_level": "0.617",
+    "volume_pattern": "높은 거래량이 주요한 지점에서 하락",
+    "trading_signal": "매수",
+    "confidence": "중간",
+    "analysis_summary": "비트코인의 차트는 상승 동향을 보이고 있으며, 거래량은 주요한 지점에서 하락한다. 이를 통해 매수 신호가 나타나는 것으로 간단히 분석할 수 있습니다."
+}
 ```
 
-### 뉴스 분석 시스템 실행 (독립 실행)
-```bash
-python news_analyzer.py
-```
+### ⚡ 성능 최적화
+- **응답 시간**: 평균 3-10초
+- **이미지 크기**: 0.07MB (최적화됨)
+- **분석 정확도**: Vision + 시장 데이터 통합으로 향상
 
-### 차트 스크린샷 캡처 테스트
-```bash
-python screenshot_capture.py
-```
-
-### 최적화된 Vision API 통합 테스트
-```bash
-python test_optimized_vision.py
-```
-
-### 이미지 최적화 기능 테스트
-```bash
-python test_image_optimization.py
-```
-
-### Structured Outputs 테스트
-```bash
-python test_structured_outputs.py
-```
-
-## 📊 시스템 구성
+## 🔧 시스템 구성
 
 ### 1. 데이터 수집 모듈
 - **시장 데이터**: 30일 일봉 + 24시간 분봉
@@ -179,8 +185,8 @@ python test_structured_outputs.py
 - **뉴스 분석**: Google News API 연동
 
 ### 2. AI 분석 엔진
-- **GPT-4o** 기반 지능형 분석
-- **GPT Vision API** 차트 이미지 분석
+- **Ollama Vision API**: 로컬 차트 이미지 분석
+- **Ollama Text API**: 시장 데이터 텍스트 분석
 - **다중 지표 종합 평가**
 - **시장 심리 + 뉴스 감정 통합 분석**
 
@@ -188,7 +194,7 @@ python test_structured_outputs.py
 - **Selenium** 웹 자동화로 차트 캡처
 - **Pillow** 라이브러리 이미지 최적화
 - **자동 차트 설정** (1시간 + 볼린저 밴드)
-- **Base64 인코딩** OpenAI 전송용
+- **Base64 인코딩** AI 전송용
 
 ### 4. 매매 실행 모듈
 - **자동 매수/매도/보유 결정**
@@ -214,19 +220,28 @@ python test_structured_outputs.py
 | 56-75 | Greed | 과매수 주의 |
 | 76-100 | Extreme Greed | 과매수, 매도 기회 |
 
-## 🔧 이미지 최적화 기능
+### Vision API 분석
+| 분석 항목 | 설명 | 매매 영향 |
+|-----------|------|-----------|
+| 가격 추세 | 상승/하락/횡보 | 매수/매도 신호 |
+| 볼린저 밴드 위치 | 상단/중간/하단 | 변동성 분석 |
+| 지지선/저항선 | 주요 가격 레벨 | 진입/청산 포인트 |
+| 거래량 패턴 | 거래량 변화 | 신호 강도 |
+| 차트 패턴 | 기술적 패턴 | 추세 예측 |
+
+## 🔧 Vision API 최적화 기능
 
 ### 최적화 프로세스
 1. **원본 스크린샷 캡처**: Selenium으로 전체 페이지 캡처
 2. **이미지 크기 조정**: 최대 1920px로 리사이즈
 3. **JPEG 압축**: 품질 85%로 최적화
 4. **파일 크기 제한**: 2MB 이하로 압축
-5. **Base64 인코딩**: OpenAI API 전송용
+5. **Base64 인코딩**: Ollama API 전송용
 
 ### 최적화 효과
 - **파일 크기 감소**: 평균 20-30% 압축률
 - **전송 속도 향상**: 최적화된 이미지로 빠른 API 호출
-- **API 비용 절약**: 작은 파일 크기로 토큰 사용량 감소
+- **API 비용 절약**: 로컬 모델 사용으로 비용 없음
 - **안정성 향상**: 네트워크 오류 위험 감소
 
 ## 🔧 Structured Outputs 기능
@@ -243,11 +258,6 @@ python test_structured_outputs.py
 - **오류 처리 강화**: 잘못된 응답 구조 자동 감지
 - **개발 효율성**: IDE 자동완성 및 타입 힌트 지원
 
-### 뉴스 감정 분석
-- **긍정적 뉴스**: 상승 압력 예상
-- **부정적 뉴스**: 하락 압력 예상
-- **중립적 뉴스**: 횡보 예상
-
 ## ⚠️ 주의사항
 
 ### 리스크 관리
@@ -255,79 +265,34 @@ python test_structured_outputs.py
 - **소액으로 시작하여 점진적 확대**
 - **손절매 전략 필수 설정**
 
+### 시스템 요구사항
+- **메모리**: 최소 8GB (Vision API 사용 시 16GB 권장)
+- **CPU**: 최소 4코어 (Vision API 사용 시 8코어 권장)
+- **디스크**: 최소 10GB 여유 공간
+- **네트워크**: 안정적인 인터넷 연결
+
 ### API 사용량
-- **OpenAI API**: GPT-4o 사용량 모니터링
-- **SerpAPI**: 월간 요청 한도 확인
-- **업비트 API**: 초당 요청 제한 준수
+- **Ollama API**: 로컬 모델로 비용 없음
+- **Upbit API**: 거래소 제한 확인 필요
+- **뉴스 API**: Google News API 제한 확인
 
-### 시스템 안정성
-- **네트워크 오류 대응**
-- **API 응답 지연 처리**
-- **예외 상황 로깅**
+## 🛠️ 문제 해결
 
-## 📁 파일 구조
+### 일반적인 문제
+1. **Ollama 연결 실패**: `ollama serve` 명령으로 서버 시작
+2. **Vision 모델 로딩 실패**: `ollama pull llava:7b` 재실행
+3. **스크린샷 캡처 실패**: Chrome 드라이버 업데이트
+4. **데이터베이스 연결 실패**: MySQL 서버 상태 확인
 
-```
-gptbitcoin/
-├── advanced_ai_trading.py    # 메인 자동매매 시스템
-├── news_analyzer.py          # 뉴스 분석 시스템
-├── mvp.py                    # 기본 버전
-├── requirements.txt          # 필요한 라이브러리
-├── .env                      # 환경 변수 (직접 생성)
-└── README.md                # 사용 설명서
-```
+### 성능 최적화
+1. **메모리 부족**: 더 작은 모델 사용 (`llava:7b` → `llava:3b`)
+2. **응답 시간 지연**: 타임아웃 설정 조정
+3. **이미지 크기 문제**: 압축 품질 조정
 
-## 🔄 실행 주기
+## 📞 지원
 
-### 메인 시스템
-- **분석 주기**: 5분마다
-- **데이터 수집**: 실시간
-- **AI 분석**: 매 사이클마다
-- **매매 실행**: 조건 충족시
-
-### 뉴스 분석 시스템
-- **분석 주기**: 30분마다
-- **뉴스 수집**: Google News API
-- **감정 분석**: 키워드 기반
-- **결과 저장**: JSON 파일
-
-## 📊 출력 예시
-
-```
-============================================================
-비트코인 AI 자동매매 시스템 시작 (기술적 지표 + 공포탐욕지수 + 뉴스 분석 포함)
-============================================================
-
-=== 시장 데이터 수집 중 (기술적 지표 포함) ===
-30일 일봉 데이터 수집 완료: 30개
-24시간 분봉 데이터 수집 완료: 1440개
-현재 비트코인 가격: 45,000,000원
-공포탐욕지수: 65 (Greed)
-📰 최신 뉴스 분석 결과:
-  긍정: 3개
-  중립: 5개
-  부정: 2개
-
-=== AI 매매 결정 분석 중 (기술적 지표 포함) ===
-AI 결정: hold
-신뢰도: 0.75
-위험도: medium
-RSI 신호: neutral
-MACD 신호: bullish
-볼린저밴드 신호: middle
-트렌드 강도: strong
-시장 심리: greed
-뉴스 감정: positive
-```
-
-## 🤝 기여하기
-
-버그 리포트나 기능 제안은 언제든 환영합니다!
-
-## 📄 라이선스
-
-이 프로젝트는 교육 목적으로 제작되었습니다. 실제 거래에 사용하기 전에 충분한 테스트가 필요합니다.
+문제가 발생하거나 질문이 있으시면 이슈를 등록해주세요.
 
 ---
 
-**⚠️ 투자 경고**: 암호화폐 투자는 높은 위험을 수반합니다. 투자 결정은 본인의 판단에 따라 신중하게 이루어져야 합니다.
+**⚠️ 투자 경고**: 이 시스템은 교육 및 연구 목적으로 제작되었습니다. 실제 투자에 사용하기 전에 충분한 테스트와 검증이 필요합니다. 투자는 본인의 책임 하에 진행하시기 바랍니다.

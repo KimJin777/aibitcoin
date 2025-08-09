@@ -48,8 +48,14 @@ def call_ollama_vision_api(prompt: str, image_base64: str, model: str = None, te
     
     url = f"{OLLAMA_BASE_URL}/api/generate"
     
-    # 이미지 데이터 준비
-    image_data = f"data:image/png;base64,{image_base64}"
+    # 이미지 데이터 준비 (base64 디코딩)
+    import base64
+    try:
+        image_bytes = base64.b64decode(image_base64)
+        image_data = base64.b64encode(image_bytes).decode('utf-8')
+    except Exception as e:
+        print(f"⚠️ 이미지 데이터 처리 중 오류: {e}")
+        return ""
     
     payload = {
         "model": model,
@@ -157,8 +163,6 @@ def analyze_market_sentiment(market_data: Dict[str, Any]) -> Dict[str, Any]:
         분석 결과
     """
     try:
-        client = genai.GenerativeModel('gemini-pro') # Changed from OpenAI to Gemini
-        
         # 시장 데이터 요약
         current_price = market_data.get('current_price', 0)
         fear_greed = market_data.get('fear_greed_index', {})
@@ -178,15 +182,22 @@ def analyze_market_sentiment(market_data: Dict[str, Any]) -> Dict[str, Any]:
         - 신뢰도: (0.0-1.0)
         """
         
-        response = client.generate_content(
-            analysis_prompt,
-            generation_config=genai.types.GenerationConfig(
-                max_output_tokens=500,
-                temperature=0.7
-            )
+        # Ollama API 호출
+        analysis_text = call_ollama_api(
+            prompt=analysis_prompt,
+            temperature=0.7,
+            max_tokens=500
         )
         
-        analysis_text = response.text
+        if not analysis_text:
+            # API 호출 실패 시 기본 분석
+            fear_greed_value = fear_greed.get('value', 50) if isinstance(fear_greed, dict) else 50
+            if fear_greed_value > 70:
+                analysis_text = f"Fear & Greed Index가 {fear_greed_value}로 높음. 과매수 상태일 수 있으므로 보수적 접근 권장."
+            elif fear_greed_value < 30:
+                analysis_text = f"Fear & Greed Index가 {fear_greed_value}로 낮음. 과매도 상태일 수 있으므로 매수 기회 고려."
+            else:
+                analysis_text = f"Fear & Greed Index가 {fear_greed_value}로 중립. 현재 가격 {current_price:,}원 기준으로 관망."
         
         return {
             'sentiment': 'neutral',  # 기본값
@@ -452,85 +463,217 @@ def ai_trading_decision_with_indicators(market_data: Dict[str, Any]) -> Optional
         return None
 
 def ai_trading_decision_with_vision(market_data: Dict[str, Any], chart_image_base64: Optional[str] = None) -> Optional[Dict[str, Any]]:
-    """Vision API를 사용한 AI 매매 결정 함수 (최적화된 버전)"""
+    """Vision API를 사용한 AI 매매 결정 함수 (개선된 버전)"""
     print("=== AI 매매 결정 분석 중 (Vision API 포함) ===")
-    
-    # Vision API를 위한 매우 간소화된 시스템 메시지
-    system_message = """
-    You are a Bitcoin trading expert. Analyze the chart and market data quickly.
-    Focus on: price trends, support/resistance, key indicators.
-    Provide a brief trading decision: buy/sell/hold with confidence level.
-    """
     
     try:
         if chart_image_base64:
-            # 이미지가 있는 경우 Ollama Vision API 사용
-            prompt = f"{system_message}\n\nAnalyze Bitcoin chart and data for trading decision: {json.dumps(market_data, default=str)}"
+            # Vision API를 사용한 차트 분석
+            vision_prompt = """
+            비트코인 차트를 분석하여 다음 정보를 JSON 형태로 제공해주세요:
             
-            analysis_text = call_ollama_vision_api(
-                prompt=prompt,
+            {
+                "trend": "상승/하락/횡보",
+                "bollinger_position": "상단/중간/하단",
+                "support_level": "주요 지지선 위치",
+                "resistance_level": "주요 저항선 위치",
+                "volume_pattern": "거래량 패턴",
+                "trading_signal": "매수/매도/보유",
+                "confidence": "높음/중간/낮음",
+                "analysis_summary": "간단한 분석 요약"
+            }
+            
+            한국어로 응답해주세요.
+            """
+            
+            vision_analysis = call_ollama_vision_api(
+                prompt=vision_prompt,
                 image_base64=chart_image_base64,
-                temperature=VISION_API_TEMPERATURE,
-                max_tokens=VISION_API_MAX_TOKENS
+                temperature=0.2,
+                max_tokens=300
             )
-        else:
-            # 이미지가 없는 경우 일반 텍스트 분석
-            prompt = f"{system_message}\n\nAnalyze Bitcoin market data for trading decision: {json.dumps(market_data, default=str)}"
             
-            analysis_text = call_ollama_api(
-                prompt=prompt,
-                temperature=VISION_API_TEMPERATURE,
-                max_tokens=VISION_API_MAX_TOKENS
-            )
-        
-        if not analysis_text:
-            # API 호출 실패 시 기본 분석 사용
-            current_price = market_data.get('current_price', 0)
-            fear_greed_data = market_data.get('fear_greed_index', {})
-            fear_greed = fear_greed_data.get('value', 50) if isinstance(fear_greed_data, dict) else 50
+            print(f"🤖 Vision API 분석 결과: {vision_analysis}")
             
-            if fear_greed > 70:
-                analysis_text = f"Fear & Greed Index가 {fear_greed}로 높음. 과매수 상태일 수 있으므로 보수적 접근 권장."
-            elif fear_greed < 30:
-                analysis_text = f"Fear & Greed Index가 {fear_greed}로 낮음. 과매도 상태일 수 있으므로 매수 기회 고려."
-            else:
-                analysis_text = f"Fear & Greed Index가 {fear_greed}로 중립. 현재 가격 {current_price:,}원 기준으로 관망."
-        
-        print(f"🤖 AI 분석 결과: {analysis_text}")
-        
-        # 기본 결정 구조 생성
-        decision = {
-            "decision": "hold",  # 기본값
-            "confidence": 0.5,
-            "risk_level": "medium",
-            "expected_price_range": {
-                "min": market_data.get('current_price', 0) * 0.95,
-                "max": market_data.get('current_price', 0) * 1.05
-            },
-            "key_indicators": {
-                "rsi_signal": "neutral",
-                "macd_signal": "neutral",
-                "bb_signal": "neutral",
-                "trend_strength": "neutral",
-                "market_sentiment": "neutral",
-                "news_sentiment": "neutral"
-            },
-            "reason": analysis_text
-        }
-        
-        # 전략 개선 적용 (선택적)
-        if STRATEGY_IMPROVEMENT_ENABLED:
-            active_improvements = get_active_strategy_improvements()
-            if active_improvements:
-                decision = apply_strategy_improvements(decision, active_improvements)
-                print(f"✅ {len(active_improvements)}개 전략 개선 적용 완료")
-            else:
-                print("ℹ️ 적용할 전략 개선이 없습니다.")
+            # Vision 분석 결과 파싱 시도
+            try:
+                import json
+                # JSON 형태가 아닌 경우 텍스트에서 키워드 추출
+                if vision_analysis and '{' in vision_analysis and '}' in vision_analysis:
+                    # JSON 부분 추출 시도
+                    start = vision_analysis.find('{')
+                    end = vision_analysis.rfind('}') + 1
+                    json_str = vision_analysis[start:end]
+                    vision_data = json.loads(json_str)
+                else:
+                    # 텍스트에서 키워드 추출
+                    vision_data = parse_vision_text(vision_analysis)
+            except:
+                # 파싱 실패 시 기본값 사용
+                vision_data = {
+                    "trend": "횡보",
+                    "trading_signal": "보유",
+                    "confidence": "중간",
+                    "analysis_summary": vision_analysis or "차트 분석 완료"
+                }
         else:
-            print("ℹ️ 전략 개선 적용이 비활성화되어 있습니다.")
+            # 이미지가 없는 경우 기본 분석
+            vision_data = {
+                "trend": "횡보",
+                "trading_signal": "보유",
+                "confidence": "중간",
+                "analysis_summary": "차트 이미지 없음"
+            }
         
-        return decision
+        # 시장 데이터 분석
+        current_price = market_data.get('current_price', 0)
+        fear_greed_data = market_data.get('fear_greed_index', {})
+        fear_greed = fear_greed_data.get('value', 50) if isinstance(fear_greed_data, dict) else 50
+        
+        # 기술적 지표 분석
+        technical_indicators = market_data.get('technical_indicators', {})
+        daily_indicators = technical_indicators.get('daily_indicators', {})
+        
+        rsi = daily_indicators.get('rsi', 50)
+        macd = daily_indicators.get('macd', 0)
+        bb_position = daily_indicators.get('bb_position', 0.5)
+        
+        # 종합 분석
+        market_analysis = analyze_market_indicators(rsi, macd, bb_position, fear_greed)
+        
+        # Vision 분석과 시장 데이터 통합
+        final_decision = integrate_vision_and_market_analysis(vision_data, market_analysis, current_price)
+        
+        print(f"🎯 최종 매매 결정: {final_decision['decision']}")
+        print(f"📊 신뢰도: {final_decision['confidence']}")
+        print(f"⚠️ 위험도: {final_decision['risk_level']}")
+        
+        return final_decision
             
     except Exception as e:
-        print(f"❌ AI 분석 중 오류 발생: {e}")
-        return None
+        print(f"❌ Vision API 분석 중 오류 발생: {e}")
+        # 오류 발생 시 기본 분석 사용
+        return ai_trading_decision_with_indicators(market_data)
+
+def parse_vision_text(vision_text: str) -> Dict[str, str]:
+    """Vision 분석 텍스트에서 키워드 추출"""
+    result = {
+        "trend": "횡보",
+        "trading_signal": "보유",
+        "confidence": "중간",
+        "analysis_summary": vision_text
+    }
+    
+    # 키워드 추출
+    if any(word in vision_text.lower() for word in ['상승', 'up', 'bullish', '매수']):
+        result["trend"] = "상승"
+    elif any(word in vision_text.lower() for word in ['하락', 'down', 'bearish', '매도']):
+        result["trend"] = "하락"
+    
+    if any(word in vision_text.lower() for word in ['매수', 'buy', 'long']):
+        result["trading_signal"] = "매수"
+    elif any(word in vision_text.lower() for word in ['매도', 'sell', 'short']):
+        result["trading_signal"] = "매도"
+    
+    if any(word in vision_text.lower() for word in ['높음', 'high', '강함']):
+        result["confidence"] = "높음"
+    elif any(word in vision_text.lower() for word in ['낮음', 'low', '약함']):
+        result["confidence"] = "낮음"
+    
+    return result
+
+def analyze_market_indicators(rsi: float, macd: float, bb_position: float, fear_greed: int) -> Dict[str, Any]:
+    """시장 지표 분석"""
+    analysis = {
+        "rsi_signal": "neutral",
+        "macd_signal": "neutral", 
+        "bb_signal": "neutral",
+        "market_sentiment": "neutral",
+        "overall_signal": "hold"
+    }
+    
+    # RSI 분석
+    if rsi > 70:
+        analysis["rsi_signal"] = "overbought"
+    elif rsi < 30:
+        analysis["rsi_signal"] = "oversold"
+    
+    # MACD 분석
+    if macd > 0:
+        analysis["macd_signal"] = "bullish"
+    else:
+        analysis["macd_signal"] = "bearish"
+    
+    # 볼린저 밴드 분석
+    if bb_position > 0.8:
+        analysis["bb_signal"] = "upper_band"
+    elif bb_position < 0.2:
+        analysis["bb_signal"] = "lower_band"
+    else:
+        analysis["bb_signal"] = "middle"
+    
+    # 공포탐욕지수 분석
+    if fear_greed > 75:
+        analysis["market_sentiment"] = "extreme_greed"
+    elif fear_greed > 55:
+        analysis["market_sentiment"] = "greed"
+    elif fear_greed < 25:
+        analysis["market_sentiment"] = "extreme_fear"
+    elif fear_greed < 45:
+        analysis["market_sentiment"] = "fear"
+    else:
+        analysis["market_sentiment"] = "neutral"
+    
+    return analysis
+
+def integrate_vision_and_market_analysis(vision_data: Dict[str, Any], market_analysis: Dict[str, Any], current_price: float) -> Dict[str, Any]:
+    """Vision 분석과 시장 데이터 통합"""
+    
+    # 기본 결정 구조
+    decision = {
+        "decision": "hold",
+        "confidence": 0.5,
+        "risk_level": "medium",
+        "expected_price_range": {
+            "min": current_price * 0.95,
+            "max": current_price * 1.05
+        },
+        "key_indicators": market_analysis,
+        "vision_analysis": vision_data,
+        "reason": f"Vision: {vision_data.get('analysis_summary', '')} | Market: RSI {market_analysis.get('rsi_signal', 'neutral')}"
+    }
+    
+    # Vision 신호와 시장 신호 통합
+    vision_signal = vision_data.get('trading_signal', '보유')
+    vision_confidence = vision_data.get('confidence', '중간')
+    
+    # 신뢰도 계산
+    confidence_map = {"높음": 0.8, "중간": 0.5, "낮음": 0.3}
+    confidence = confidence_map.get(vision_confidence, 0.5)
+    
+    # 매매 결정 로직
+    if vision_signal == "매수" and market_analysis["rsi_signal"] == "oversold":
+        decision["decision"] = "buy"
+        decision["confidence"] = min(confidence + 0.2, 1.0)
+    elif vision_signal == "매도" and market_analysis["rsi_signal"] == "overbought":
+        decision["decision"] = "sell"
+        decision["confidence"] = min(confidence + 0.2, 1.0)
+    elif vision_signal == "매수":
+        decision["decision"] = "buy"
+        decision["confidence"] = confidence
+    elif vision_signal == "매도":
+        decision["decision"] = "sell"
+        decision["confidence"] = confidence
+    else:
+        decision["decision"] = "hold"
+        decision["confidence"] = confidence
+    
+    # 위험도 설정
+    if decision["confidence"] > 0.7:
+        decision["risk_level"] = "low"
+    elif decision["confidence"] < 0.4:
+        decision["risk_level"] = "high"
+    else:
+        decision["risk_level"] = "medium"
+    
+    return decision

@@ -199,18 +199,19 @@ class DatabaseConnection:
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
             """
             
-            cursor.execute(create_trades_table)
-            cursor.execute(create_market_data_table)
-            cursor.execute(create_system_logs_table)
-            cursor.execute(create_trading_reflections_table)
-            cursor.execute(create_performance_metrics_table)
-            cursor.execute(create_learning_insights_table)
-            cursor.execute(create_strategy_improvements_table)
+            # 테이블이 이미 확실하게 있으므로 테이블 생성쿼리는 주석처리
+            # cursor.execute(create_trades_table)
+            # cursor.execute(create_market_data_table)
+            # cursor.execute(create_system_logs_table)
+            # cursor.execute(create_trading_reflections_table)
+            # cursor.execute(create_performance_metrics_table)
+            # cursor.execute(create_learning_insights_table)
+            # cursor.execute(create_strategy_improvements_table)
             
-            self.connection.commit()
+            # self.connection.commit()
             cursor.close()
             
-            self.logger.info("데이터베이스 테이블 생성 완료")
+            # self.logger.info("데이터베이스 테이블 생성 완료")
             return True
             
         except Error as e:

@@ -6,7 +6,7 @@ AI 결정에 따른 실제 매매를 실행합니다.
 import time
 from typing import Optional, Dict, Any
 from config.settings import get_trading_config
-from database.trade_recorder import save_trade_record, save_market_data_record
+from database.trade_recorder import save_trade_record, save_market_data_record, save_system_log_record
 
 def execute_trading_decision(upbit, decision: Dict[str, Any], investment_status: Optional[Dict[str, Any]], market_data: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """AI 결정에 따른 매매 실행"""
@@ -51,6 +51,11 @@ def execute_trading_decision(upbit, decision: Dict[str, Any], investment_status:
             print(f"   필요 금액: {min_trade_amount:,}원")
             print(f"   보유 현금: {krw_balance:,.2f}원")
             execution_result['status'] = 'insufficient_balance'
+            # 시스템 로그 저장 (DB)
+            try:
+                save_system_log_record('WARNING', f"매수 건너뜀 - 잔고 부족: 필요 {min_trade_amount}, 보유 {krw_balance:,.2f}", 'trading.execution')
+            except Exception:
+                pass
             return execution_result
         
         # 매수 금액 계산 (전체 현금의 95% 사용, 수수료 고려)
@@ -125,6 +130,11 @@ def execute_trading_decision(upbit, decision: Dict[str, Any], investment_status:
             print(f"   필요 금액: {min_trade_amount:,}원")
             print(f"   보유 비트코인 가치: {btc_balance * current_price:,.2f}원")
             execution_result['status'] = 'insufficient_balance'
+            # 시스템 로그 저장 (DB)
+            try:
+                save_system_log_record('WARNING', f"매도 건너뜀 - 수량 부족: 필요 {min_trade_amount}, 보유가치 {btc_balance * current_price:,.2f}", 'trading.execution')
+            except Exception:
+                pass
             return execution_result
         
         # 매도 수량 계산 (전체 비트코인의 95% 매도, 수수료 고려)
