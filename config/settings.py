@@ -73,11 +73,13 @@ DB_PASSWORD = os.getenv("DB_PASSWORD", "kimjink@@7")
 STRATEGY_IMPROVEMENT_ENABLED = True  # 전략 개선 적용 비활성화 (성능 최적화)
 STRATEGY_IMPROVEMENT_CACHE_TIME = 300  # 전략 개선 캐시 시간 (초)
 
-# 브라우저 최적화 설정 (테스트용: 실제 브라우저 표시 및 렌더링 활성화)
-BROWSER_HEADLESS = False  # 헤드리스 비활성화 → 브라우저 창 표시
-BROWSER_DISABLE_IMAGES = False  # 이미지 로딩 활성화
-BROWSER_DISABLE_JS = False  # JavaScript 활성화
-BROWSER_DISABLE_CSS = False  # CSS 활성화
+# # 브라우저 최적화 설정 (테스트용: 실제 브라우저 표시 및 렌더링 활성화)
+# BROWSER_HEADLESS = False  # 헤드리스 비활성화 → 브라우저 창 표시
+# 브라우저 최적화 설정 (백그라운드 실행)
+BROWSER_HEADLESS = True  # 헤드리스 활성화 → 브라우저 창 숨김
+BROWSER_DISABLE_IMAGES = False  # (필요 시 True로 최적화 가능)
+BROWSER_DISABLE_JS = False      # (필요 시 True로 최적화 가능)
+BROWSER_DISABLE_CSS = False     # (필요 시 True로 최적화 가능)
 BROWSER_PAGE_LOAD_STRATEGY = 'eager'  # 페이지 로드 전략
 
 # 차트 설정 옵션
