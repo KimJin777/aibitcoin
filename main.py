@@ -191,6 +191,13 @@ def main_trading_cycle_with_indicators(upbit, logger):
         print("💼 매매 결정을 실행합니다...")
         execution_result = execute_trading_decision(upbit, decision, investment_status, market_data)
         
+        # # 수동동매매 실행
+        # if aa:
+            
+        #     print("💼 매매 결정을 실행합니다...")
+        #     decision = {'decision': 'sell'}
+        #     execution_result = execute_trading_decision(upbit, decision, investment_status, market_data)
+        
         if execution_result and execution_result.get('success', False):
             print("✅ 매매 실행 완료")
             logger.info(f"매매 실행 성공: {execution_result}")

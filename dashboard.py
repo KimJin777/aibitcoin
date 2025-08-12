@@ -19,6 +19,344 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from config.settings import DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD
 
+def get_db_connection():
+    """데이터베이스 연결"""
+    try:
+        connection = mysql.connector.connect(
+            host=DB_HOST,
+            port=DB_PORT,
+            database=DB_NAME,
+            user=DB_USER,
+            password=DB_PASSWORD
+        )
+        return connection
+    except Exception as e:
+        st.error(f"데이터베이스 연결 오류: {e}")
+        return None
+
+def get_initial_investment_estimate():
+    """데이터베이스에서 초기 투자금액을 추정하는 함수"""
+    try:
+        connection = get_db_connection()
+        if not connection:
+            return None
+        
+        cursor = connection.cursor(dictionary=True)
+        
+        # 방법 1: 가장 오래된 거래 기록에서 KRW잔고 확인
+        query_oldest = """
+        SELECT balance_krw, timestamp 
+        FROM trades 
+        ORDER BY timestamp ASC 
+        LIMIT 1
+        """
+        cursor.execute(query_oldest)
+        oldest_trade = cursor.fetchone()
+        
+        # 방법 2: 현재 보유 비트코인의 총 투자금액 계산 (평균매수가 * 보유량)
+        query_btc_investment = """
+        SELECT balance_btc, price, amount, total_value
+        FROM trades 
+        WHERE action = 'buy' AND balance_btc > 0
+        ORDER BY timestamp DESC 
+        LIMIT 1
+        """
+        cursor.execute(query_btc_investment)
+        btc_trade = cursor.fetchone()
+        
+        # 방법 3: 모든 매수 거래의 총합으로 추정
+        query_total_buy = """
+        SELECT SUM(total_value) as total_buy_amount
+        FROM trades 
+        WHERE action = 'buy'
+        """
+        cursor.execute(query_total_buy)
+        total_buy_result = cursor.fetchone()
+        
+        cursor.close()
+        
+        estimated_investment = None
+        
+        if oldest_trade and oldest_trade['balance_krw']:
+            # 가장 오래된 거래 시점의 KRW잔고가 초기 투자금액일 가능성이 높음
+            estimated_investment = oldest_trade['balance_krw']
+            print(f"📊 가장 오래된 거래에서 추정된 총투자원금: {estimated_investment:,.0f}원")
+        
+        if btc_trade and btc_trade['balance_btc'] and btc_trade['price']:
+            # 비트코인 보유량이 있다면 평균 매수가로 계산
+            btc_investment = btc_trade['balance_btc'] * btc_trade['price']
+            if estimated_investment is None or btc_investment > estimated_investment:
+                estimated_investment = btc_investment
+            print(f"📊 비트코인 보유량 기반 추정 투자금액: {btc_investment:,.0f}원")
+        
+        if total_buy_result and total_buy_result['total_buy_amount']:
+            # 모든 매수 거래의 총합
+            total_buy_amount = total_buy_result['total_buy_amount']
+            if estimated_investment is None or total_buy_amount > estimated_investment:
+                estimated_investment = total_buy_amount
+            print(f"📊 총 매수 거래액 기반 추정 투자금액: {total_buy_amount:,.0f}원")
+        
+        return estimated_investment
+        
+    except Exception as e:
+        print(f"❌ 초기 투자금액 추정 실패: {e}")
+        return None
+
+def get_upbit_deposit_history():
+    """업비트 API를 통해 입금 내역을 조회하여 초기 투자금액을 추정하는 함수"""
+    try:
+        import pyupbit
+        from config.settings import UPBIT_ACCESS_KEY, UPBIT_SECRET_KEY
+        
+        if not UPBIT_ACCESS_KEY or not UPBIT_SECRET_KEY:
+            print("⚠️ 업비트 API 키가 설정되지 않았습니다.")
+            return None
+        
+        upbit = pyupbit.Upbit(UPBIT_ACCESS_KEY, UPBIT_SECRET_KEY)
+        
+        # 방법 1: 업비트 API에서 실제 입금 내역 조회 (가장 정확)
+        try:
+            print("🔍 업비트 API에서 KRW 입금 내역 조회 시도...")
+            # KRW 입금 내역 조회
+            krw_deposits = upbit.get_deposit_list("KRW")
+            print(f"📊 get_deposit_list 결과: {krw_deposits}")
+            
+            if krw_deposits:
+                print(f"📊 KRW 입금 내역 조회 성공: {len(krw_deposits)}건")
+                
+                # 입금 내역 정리
+                deposit_records = []
+                total_deposits = 0
+                
+                for deposit in krw_deposits:
+                    if isinstance(deposit, dict):
+                        amount = float(deposit.get('amount', 0))
+                        created_at = deposit.get('created_at', '')
+                        state = deposit.get('state', '')
+                        
+                        print(f"📊 입금 내역 항목: amount={amount}, state={state}, created_at={created_at}")
+                        
+                        # 완료된 입금만 계산 (ACCEPTED도 완료로 인식)
+                        if (state == 'done' or state == 'ACCEPTED') and amount > 0:
+                            deposit_records.append({
+                                'amount': amount,
+                                'created_at': created_at,
+                                'state': state
+                            })
+                            total_deposits += amount
+                
+                if deposit_records:
+                    print(f"📊 총 입금 횟수: {len(deposit_records)}회")
+                    print(f"📊 총 입금액: {total_deposits:,.0f}원")
+                    
+                    # 입금 내역 정렬 (최신순)
+                    deposit_records.sort(key=lambda x: x['created_at'], reverse=True)
+                    
+                    # 상세 입금 내역 출력
+                    for i, deposit in enumerate(deposit_records[:5]):  # 최근 5건만 출력
+                        print(f"  {i+1}. {deposit['amount']:,.0f}원 ({deposit['created_at']})")
+                    
+                    return {
+                        'total_deposits': total_deposits,
+                        'deposit_count': len(deposit_records),
+                        'deposits': deposit_records,
+                        'method': '실제 입금 내역 조회',
+                        'total_assets': None,
+                        'total_buy_amount': None,
+                        'krw_balance': None,
+                        'btc_balance': None,
+                        'current_btc_price': None
+                    }
+                else:
+                    print("📊 완료된 KRW 입금 내역이 없습니다.")
+                    print("📊 모든 입금 내역 상태:", [f"amount={d.get('amount', 0)}, state={d.get('state', 'N/A')}" for d in krw_deposits[:5]])
+            else:
+                print("📊 KRW 입금 내역을 가져올 수 없습니다.")
+                
+        except Exception as deposit_error:
+            print(f"📊 입금 내역 조회 실패: {deposit_error}")
+            print(f"📊 오류 타입: {type(deposit_error).__name__}")
+            import traceback
+            print(f"📊 상세 오류: {traceback.format_exc()}")
+        
+        # 방법 2: 기존 추정 방식 (입금 내역 조회 실패 시 백업)
+        try:
+            print("🔄 백업 추정 방식 사용 (실제 입금 내역 조회 실패)")
+            # 계좌 잔고 조회
+            balances = upbit.get_balances()
+            if not balances:
+                print("📊 계좌 잔고 정보를 가져올 수 없습니다.")
+                return None
+            
+            # KRW잔고 확인
+            krw_balance = 0
+            btc_balance = 0
+            btc_avg_price = 0
+            
+            for balance in balances:
+                if isinstance(balance, dict):
+                    currency = balance.get('currency', '')
+                    if currency == 'KRW':
+                        krw_balance = float(balance.get('balance', 0))
+                    elif currency == 'BTC':
+                        btc_balance = float(balance.get('balance', 0))
+                        btc_avg_price = float(balance.get('avg_buy_price', 0))
+            
+            print(f"📊 KRW 잔고: {krw_balance:,.0f}원")
+            print(f"📊 BTC 잔고: {btc_balance:.8f} BTC")
+            print(f"📊 BTC 평균 매수가: {btc_avg_price:,.0f}원")
+            
+            # 현재 비트코인 가격 조회
+            current_price = pyupbit.get_current_price("KRW-BTC")
+            if not current_price:
+                print("📊 현재 비트코인 가격을 가져올 수 없습니다.")
+                return None
+            
+            print(f"📊 현재 BTC 가격: {current_price:,.0f}원")
+            
+            # 총보유자산 계산
+            total_assets = krw_balance + (btc_balance * current_price)
+            print(f"📊 계산된 총보유자산: {total_assets:,.0f}원")
+            
+            # 방법 3: 거래 내역을 통해 입금 추정
+            try:
+                print("📊 거래 내역을 통한 입금 추정 시도...")
+                # 주문 내역 조회
+                orders = upbit.get_order_history()
+                if orders:
+                    print(f"📊 주문 내역 조회 성공: {len(orders)}건")
+                    # 매수 거래만 필터링하여 총 투자금액 추정
+                    buy_orders = []
+                    total_buy_amount = 0
+                    
+                    for order in orders:
+                        if isinstance(order, dict):
+                            side = order.get('side', '')
+                            price = order.get('price', 0)
+                            executed_volume = order.get('executed_volume', 0)
+                            state = order.get('state', '')
+                            
+                            # 완료된 매수 주문만 계산
+                            if side == 'bid' and state == 'done' and price > 0 and executed_volume > 0:
+                                try:
+                                    order_amount = float(price) * float(executed_volume)
+                                    buy_orders.append({
+                                        'price': float(price),
+                                        'volume': float(executed_volume),
+                                        'amount': order_amount,
+                                        'created_at': order.get('created_at', '')
+                                    })
+                                    total_buy_amount += order_amount
+                                except (ValueError, TypeError):
+                                    continue
+                    
+                    if buy_orders:
+                        print(f"📊 총 매수 거래 횟수: {len(buy_orders)}회")
+                        print(f"📊 총 매수 금액: {total_buy_amount:,.0f}원")
+                        
+                        # 매수 거래 내역 정렬 (최신순)
+                        buy_orders.sort(key=lambda x: x['created_at'], reverse=True)
+                        
+                        # 상세 매수 내역 출력
+                        for i, order in enumerate(buy_orders[:5]):  # 최근 5건만 출력
+                            print(f"  {i+1}. {order['amount']:,.0f}원 (BTC: {order['volume']:.8f} @ {order['price']:,.0f}원)")
+                        
+                        # 입금 내역으로 추정 (현재 총 자산 + 총 매수 금액)
+                        estimated_deposits = total_assets + total_buy_amount
+                        print(f"📊 최종 추정 입금액: {total_assets:,.0f}원 + {total_buy_amount:,.0f}원 = {estimated_deposits:,.0f}원")
+                        
+                        return {
+                            'total_deposits': estimated_deposits,
+                            'deposit_count': len(buy_orders),
+                            'deposits': buy_orders,
+                            'method': '거래 내역 기반 추정',
+                            'total_assets': total_assets,
+                            'total_buy_amount': total_buy_amount,
+                            'krw_balance': krw_balance,
+                            'btc_balance': btc_balance,
+                            'current_btc_price': current_price
+                        }
+                    else:
+                        print("📊 매수 거래 내역이 없습니다.")
+                else:
+                    print("📊 주문 내역이 없습니다.")
+                
+            except Exception as order_error:
+                print(f"📊 거래 내역 조회 실패: {order_error}")
+            
+            # 방법 4: 간단한 추정 (현재 총보유자산을 입금액으로 가정)
+            print(f"📊 방법 4: 현재 자산 기반 추정 사용")
+            print(f"📊 현재 총보유자산: {total_assets:,.0f}원")
+            print(f"📊 KRW잔고: {krw_balance:,.0f}원")
+            print(f"📊 BTC 잔고: {btc_balance:.8f} BTC")
+            print(f"📊 BTC 평균 매수가: {btc_avg_price:,.0f}원")
+            print(f"📊 현재 BTC 가격: {current_price:,.0f}원")
+            
+            return {
+                'total_deposits': total_assets,
+                'deposit_count': 1,
+                'deposits': [{'amount': total_assets, 'created_at': '현재', 'state': '추정'}],
+                'method': '현재 자산 기반 추정',
+                'total_assets': total_assets,
+                'krw_balance': krw_balance,
+                'btc_balance': btc_balance,
+                'current_btc_price': current_price
+            }
+            
+        except Exception as balance_error:
+            print(f"📊 계좌 정보 조회 실패: {balance_error}")
+            return None
+        
+    except Exception as e:
+        print(f"❌ 업비트 입금 내역 조회 실패: {e}")
+        return None
+
+def get_upbit_account_info():
+    """업비트 API를 통해 현재 계좌 정보를 조회하는 함수"""
+    try:
+        import pyupbit
+        from config.settings import UPBIT_ACCESS_KEY, UPBIT_SECRET_KEY
+        
+        if not UPBIT_ACCESS_KEY or not UPBIT_SECRET_KEY:
+            print("⚠️ 업비트 API 키가 설정되지 않았습니다.")
+            return None
+        
+        upbit = pyupbit.Upbit(UPBIT_ACCESS_KEY, UPBIT_SECRET_KEY)
+        
+        # 현재 잔고 조회
+        balances = upbit.get_balances()
+        if not balances:
+            return None
+        
+        account_info = {
+            'krw_balance': 0,
+            'btc_balance': 0,
+            'btc_avg_price': 0
+        }
+        
+        for balance in balances:
+            if isinstance(balance, dict):
+                currency = balance.get('currency', '')
+                if currency == 'KRW':
+                    account_info['krw_balance'] = float(balance.get('balance', 0))
+                elif currency == 'BTC':
+                    account_info['btc_balance'] = float(balance.get('balance', 0))
+                    account_info['btc_avg_price'] = float(balance.get('avg_buy_price', 0))
+        
+        # 현재 비트코인 가격 조회
+        current_price = pyupbit.get_current_price("KRW-BTC")
+        if current_price and account_info['btc_balance'] > 0:
+            # 비트코인 보유량이 있다면 평균 매수가로 총 투자금액 계산
+            total_btc_investment = account_info['btc_balance'] * account_info['btc_avg_price']
+            account_info['total_btc_investment'] = total_btc_investment
+            print(f"📊 업비트 API 기반 추정 총투자원금: {total_btc_investment:,.0f}원")
+        
+        return account_info
+        
+    except Exception as e:
+        print(f"❌ 업비트 API 조회 실패: {e}")
+        return None
+
 class TradingDashboard:
     """거래 대시보드 클래스"""
     
@@ -587,12 +925,186 @@ def main():
     st.markdown("---")
     
     # 사이드바 설정
-    st.sidebar.title("📊 설정")
+    with st.sidebar:
+        st.header("⚙️ 설정")
+        
+        # 초기 투자금액 자동 추정
+        st.subheader("💰 총투자원금 자동 추정")
+        
+        # 방법 1: 업비트 입금 내역 조회 (가장 정확)
+        deposit_info = get_upbit_deposit_history()
+        
+        # 방법 2: 데이터베이스 기반 추정
+        estimated_investment = get_initial_investment_estimate()
+        
+        # 방법 3: 업비트 API 기반 추정
+        upbit_info = get_upbit_account_info()
+        
+        # 가장 정확한 추정값 선택 (입금 내역 > 데이터베이스 > 업비트 API 순)
+        final_estimate = None
+        if deposit_info and deposit_info['total_deposits'] > 0:
+            final_estimate = deposit_info['total_deposits']
+            st.success(f"🎯 {deposit_info.get('method', '업비트 입금 내역')} 기반: {final_estimate:,.0f}원")
+            st.info(f"📊 총 {deposit_info['deposit_count']}회 입금")
+            
+            # 상세 정보 표시
+            if 'total_assets' in deposit_info and deposit_info['total_assets'] is not None:
+                st.write(f"💰 현재 총보유자산: {deposit_info['total_assets']:,.0f}원")
+            if 'total_buy_amount' in deposit_info and deposit_info['total_buy_amount'] is not None:
+                st.write(f"💸 총 매수 금액: {deposit_info['total_buy_amount']:,.0f}원")
+            if 'krw_balance' in deposit_info and deposit_info['krw_balance'] is not None:
+                st.write(f"💵 KRW잔고: {deposit_info['krw_balance']:,.0f}원")
+            if 'btc_balance' in deposit_info and deposit_info['btc_balance'] is not None:
+                st.write(f"₿ BTC 잔고: {deposit_info['btc_balance']:.8f} BTC")
+            if 'current_btc_price' in deposit_info and deposit_info['current_btc_price'] is not None:
+                st.write(f"📈 현재 BTC 가격: {deposit_info['current_btc_price']:,.0f}원")
+                
+        elif estimated_investment:
+            final_estimate = estimated_investment
+            st.info(f"📊 데이터베이스 기반 추정: {estimated_investment:,.0f}원")
+        elif upbit_info and 'total_btc_investment' in upbit_info:
+            final_estimate = upbit_info['total_btc_investment']
+            st.info(f"📊 업비트 API 기반 추정: {upbit_info['total_btc_investment']:,.0f}원")
+        else:
+            final_estimate = 1000000
+            st.warning("⚠️ 자동 추정 실패, 기본값 사용")
+        
+        # 입금 내역 상세 정보 표시
+        if deposit_info and deposit_info['deposits']:
+            with st.expander("📋 상세 입금 내역"):
+                if deposit_info.get('method') == '실제 입금 내역 조회':
+                    st.success("✅ 업비트 API에서 실제 입금 내역을 조회했습니다")
+                    for i, deposit in enumerate(deposit_info['deposits'][:10]):  # 최근 10건
+                        st.write(f"{i+1}. {deposit['amount']:,.0f}원 ({deposit['created_at']})")
+                elif deposit_info.get('method') == '거래 내역 기반 추정':
+                    st.info("📊 거래 내역을 기반으로 입금액을 추정했습니다")
+                    for i, deposit in enumerate(deposit_info['deposits'][:10]):  # 최근 10건
+                        if 'volume' in deposit:  # 매수 거래인 경우
+                            st.write(f"{i+1}. {deposit['amount']:,.0f}원 (BTC: {deposit['volume']:.8f} @ {deposit['price']:,.0f}원)")
+                        else:  # 일반 입금인 경우
+                            st.write(f"{i+1}. {deposit['amount']:,.0f}원 ({deposit['created_at']})")
+                else:
+                    for i, deposit in enumerate(deposit_info['deposits'][:10]):  # 최근 10건
+                        st.write(f"{i+1}. {deposit['amount']:,.0f}원 ({deposit['created_at']})")
+        
+        # 수동 새로고침 버튼
+        if st.button("🔄 총투자원금 새로고침", type="secondary"):
+            st.rerun()
+        
+        # 디버깅 정보 표시
+        if st.checkbox("🔍 디버깅 정보 표시"):
+            st.write("**현재 추정 방법:**")
+            if deposit_info:
+                st.write(f"- 방법: {deposit_info.get('method', '알 수 없음')}")
+                st.write(f"- 총 입금액: {deposit_info['total_deposits']:,.0f}원")
+                st.write(f"- 입금 횟수: {deposit_info['deposit_count']}회")
+                
+                if deposit_info.get('method') == '실제 입금 내역 조회':
+                    st.success("✅ 실제 입금 내역 기반으로 정확한 총투자원금을 계산했습니다")
+                elif deposit_info.get('method') == '거래 내역 기반 추정':
+                    if 'total_assets' in deposit_info and deposit_info['total_assets'] is not None:
+                        st.write(f"- 현재 총보유자산: {deposit_info['total_assets']:,.0f}원")
+                    if 'total_buy_amount' in deposit_info and deposit_info['total_buy_amount'] is not None:
+                        st.write(f"- 총 매수 금액: {deposit_info['total_buy_amount']:,.0f}원")
+                    st.info("📊 거래 내역을 기반으로 추정한 값입니다")
+                elif deposit_info.get('method') == '현재 자산 기반 추정':
+                    if 'total_assets' in deposit_info and deposit_info['total_assets'] is not None:
+                        st.write(f"- 현재 총보유자산: {deposit_info['total_assets']:,.0f}원")
+                    st.warning("⚠️ 현재 자산을 기반으로 추정한 값입니다")
+            else:
+                st.write("- 입금 내역 정보 없음")
+        
+        # 초기 투자금액 입력
+        initial_investment = st.number_input(
+            "총투자원금 (원)", 
+            min_value=100000, 
+            max_value=100000000, 
+            value=int(final_estimate), 
+            step=100000,
+            help="업비트에 현금으로 입금한 총 금액을 입력하세요"
+        )
+        
+        # 수동으로 정확한 입금액 입력 옵션
+        if st.checkbox("✏️ 수동으로 정확한 입금액 입력"):
+            manual_investment = st.number_input(
+                "정확한 총투자원금 (원)",
+                min_value=100000,
+                max_value=100000000,
+                value=100229,  # 사용자가 언급한 정확한 값
+                step=1000,
+                help="정확한 입금액을 알고 있다면 여기에 입력하세요"
+            )
+            initial_investment = manual_investment
+            st.success(f"✅ 수동 입력된 총투자원금: {manual_investment:,.0f}원")
+        
+        # 업비트 계좌 정보 표시
+        if upbit_info:
+            st.subheader("📊 업비트 계좌 현황")
+            st.metric("KRW잔고", f"{upbit_info['krw_balance']:,.0f}원")
+            st.metric("비트코인 보유량", f"{upbit_info['btc_balance']:.8f} BTC")
+            if upbit_info['btc_avg_price'] > 0:
+                st.metric("평균 매수가", f"{upbit_info['btc_avg_price']:,.0f}원")
+            
+            # 현재 비트코인 가격
+            try:
+                import pyupbit
+                current_price = pyupbit.get_current_price("KRW-BTC")
+                if current_price:
+                    st.metric("현재 BTC 가격", f"{current_price:,.0f}원")
+                    
+                    # 비트코인 평가금액
+                    if upbit_info['btc_balance'] > 0:
+                        btc_value = upbit_info['btc_balance'] * current_price
+                        st.metric("BTC가치", f"{btc_value:,.0f}원")
+            except:
+                pass
+    
     refresh_interval = st.sidebar.slider("새로고침 간격 (초)", 5, 60, 30)
     
     # 자동 새로고침
     if st.sidebar.button("🔄 새로고침"):
         st.rerun()
+    
+    # 재정 상태 요약 섹션
+    st.subheader("💰 재정 상태 요약")
+    finance_col1, finance_col2, finance_col3, finance_col4 = st.columns(4)
+    
+    # 최근 거래 데이터로 재정 상태 계산
+    recent_trades = dashboard.get_recent_trades(100)
+    if not recent_trades.empty:
+        # 현재 잔고 정보 (가장 최근 거래 기준)
+        latest_trade = recent_trades.iloc[0]
+        current_krw = latest_trade.get('balance_krw', 0)  # KRW잔고: 원화보유잔고
+        current_btc = latest_trade.get('balance_btc', 0)
+        current_btc_price = latest_trade.get('price', 0)
+        btc_value = current_btc * current_btc_price  # BTC가치: 비트코인투자자산가치
+        
+        # 총보유자산 = KRW잔고 + BTC가치
+        total_assets = current_krw + btc_value
+        
+        # 수익/손실 = 총투자원금 - 총보유자산
+        profit_loss = total_assets-initial_investment 
+        
+        # 수익률 = (수익손실) / 총투자원금
+        profit_rate = (profit_loss / initial_investment) * 100 if initial_investment > 0 else 0
+        
+        with finance_col1:
+            st.metric("💰 총보유자산", f"{total_assets:,.0f}원")
+            st.metric("💵 KRW잔고", f"{current_krw:,.0f}원")
+        
+        with finance_col2:
+            st.metric("₿ BTC 보유량", f"{current_btc:.8f}")
+            st.metric("📊 BTC가치", f"{btc_value:,.0f}원")
+        
+        with finance_col3:
+            st.metric("📈 수익/손실", f"{profit_loss:+,.0f}원")
+            st.metric("📊 수익률", f"{profit_rate:+.2f}%")
+        
+        with finance_col4:
+            st.metric("💼 총투자원금", f"{initial_investment:,.0f}원")
+            st.metric("🎯 투자 성과", "📈" if profit_loss > 0 else "📉")
+    
+    st.markdown("---")
     
     # 메인 컨텐츠
     col1, col2, col3, col4 = st.columns(4)
@@ -700,10 +1212,88 @@ def main():
     # 상세 데이터 테이블
     st.markdown("---")
     
-    tab1, tab2, tab3, tab4 = st.tabs(["📋 최근 거래", "🤔 반성 데이터", "💡 학습 인사이트", "🔧 전략 개선"])
+    tab1, tab2, tab3, tab4, tab5 = st.tabs(["💰 재정 상세", "📋 최근 거래", "🤔 반성 데이터", "💡 학습 인사이트", "🔧 전략 개선"])
     
     with tab1:
-        st.subheader("최근 거래 기록")
+        st.subheader("💰 재정 상세 정보")
+        
+        # 재정 요약 카드
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.markdown("### 📊 자산 구성")
+            if not recent_trades.empty:
+                latest_trade = recent_trades.iloc[0]
+                current_krw = latest_trade.get('balance_krw', 0)  # KRW잔고: 원화보유잔고
+                current_btc = latest_trade.get('balance_btc', 0)
+                btc_value = current_btc * latest_trade.get('price', 0)  # BTC가치: 비트코인투자자산가치
+                total_assets = current_krw + btc_value  # 총보유자산 = KRW잔고 + BTC가치
+                
+                # 자산 구성 파이 차트
+                if total_assets > 0:
+                    fig = go.Figure(data=[go.Pie(
+                        labels=['KRW잔고', 'BTC가치'],
+                        values=[current_krw, btc_value],
+                        hole=0.3,
+                        marker_colors=['#00D4AA', '#FF6B6B']
+                    )])
+                    fig.update_layout(title="자산 구성 비율", height=300)
+                    st.plotly_chart(fig, use_container_width=True)
+                
+                # 자산 상세 정보
+                st.markdown("#### 자산 세부사항")
+                st.write(f"**총보유자산**: {total_assets:,.0f}원")
+                st.write(f"**KRW잔고**: {current_krw:,.0f}원 ({(current_krw/total_assets*100):.1f}%)")
+                st.write(f"**BTC가치**: {btc_value:,.0f}원 ({(btc_value/total_assets*100):.1f}%)")
+        
+        with col2:
+            st.markdown("### 📈 투자 성과")
+            if not recent_trades.empty:
+                # 수익/손실 = 총투자원금 - 총보유자산
+                profit_loss = total_assets - initial_investment
+                # 수익률 = (수익손실) / 총투자원금
+                profit_rate = (profit_loss / initial_investment) * 100 if initial_investment > 0 else 0
+                
+                # 성과 지표
+                st.metric("💰 총투자원금", f"{initial_investment:,.0f}원")
+                st.metric("📊 총보유자산", f"{total_assets:,.0f}원")
+                st.metric("📈 수익/손실", f"{profit_loss:+,.0f}원")
+                st.metric("🎯 수익률", f"{profit_rate:+.2f}%")
+                
+                # 투자 성과 등급
+                if profit_rate >= 20:
+                    grade = "🟢 A+ (우수)"
+                elif profit_rate >= 10:
+                    grade = "🟢 A (양호)"
+                elif profit_rate >= 0:
+                    grade = "🟡 B (보통)"
+                elif profit_rate >= -10:
+                    grade = "🟠 C (주의)"
+                else:
+                    grade = "🔴 D (위험)"
+                
+                st.markdown(f"#### 투자 성과 등급: {grade}")
+        
+        # 투자 내역 테이블
+        st.markdown("### 📋 투자 내역")
+        if not recent_trades.empty:
+            # 투자 내역 데이터 준비
+            investment_df = recent_trades[['timestamp', 'action', 'price', 'amount', 'total_value', 'balance_krw', 'balance_btc']].copy()
+            investment_df['timestamp'] = pd.to_datetime(investment_df['timestamp'])
+            investment_df['action_kr'] = investment_df['action'].map({'buy': '매수', 'sell': '매도'})
+            investment_df['btc_value'] = investment_df['balance_btc'] * investment_df['price']
+            investment_df['total_portfolio'] = investment_df['balance_krw'] + investment_df['btc_value']
+            
+            # 컬럼명 한글화
+            display_df = investment_df[['timestamp', 'action_kr', 'price', 'amount', 'total_value', 'balance_krw', 'balance_btc', 'btc_value', 'total_portfolio']].copy()
+            display_df.columns = ['시간', '행동', 'BTC가격', '수량', '거래금액', 'KRW잔고', 'BTC잔고', 'BTC가치', '총보유자산']
+            
+            st.dataframe(display_df, use_container_width=True)
+        else:
+            st.info("투자 내역이 없습니다.")
+    
+    with tab2:
+        st.subheader("📋 최근 거래 기록")
         recent_trades = dashboard.get_recent_trades(20)
         if not recent_trades.empty:
             # 시간 포맷팅
@@ -719,8 +1309,8 @@ def main():
         else:
             st.info("거래 기록이 없습니다.")
     
-    with tab2:
-        st.subheader("거래 반성 데이터")
+    with tab3:
+        st.subheader("🤔 거래 반성 데이터")
         reflections = dashboard.get_trading_reflections(10)
         if not reflections.empty:
             # 시간 포맷팅
@@ -737,8 +1327,8 @@ def main():
         else:
             st.info("반성 데이터가 없습니다.")
     
-    with tab3:
-        st.subheader("학습 인사이트")
+    with tab4:
+        st.subheader("💡 학습 인사이트")
         insights = dashboard.get_learning_insights(10)
         if not insights.empty:
             # 시간 포맷팅
@@ -753,8 +1343,8 @@ def main():
         else:
             st.info("학습 인사이트가 없습니다.")
     
-    with tab4:
-        st.subheader("전략 개선 제안")
+    with tab5:
+        st.subheader("🔧 전략 개선 제안")
         improvements = dashboard.get_strategy_improvements(10)
         if not improvements.empty:
             # 시간 포맷팅
