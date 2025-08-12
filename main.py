@@ -8,6 +8,7 @@ import sys
 import socket
 import subprocess
 import argparse
+from numpy import average
 import pyupbit
 from config.settings import validate_api_keys, UPBIT_ACCESS_KEY, UPBIT_SECRET_KEY, ANALYSIS_INTERVAL
 from data.market_data import get_market_data
@@ -15,7 +16,7 @@ from data.news_data import get_bitcoin_news, analyze_news_sentiment, get_news_su
 from data.screenshot import capture_upbit_screenshot, create_images_directory
 from analysis.technical_indicators import calculate_technical_indicators
 from analysis.ai_analysis import create_market_analysis_data, ai_trading_decision_with_indicators, ai_trading_decision_with_vision
-from trading.account import get_investment_status, get_pending_orders, get_recent_orders
+from trading.account import get_investment_status, get_pending_orders, get_recent_orders, get_total_profit_loss
 from trading.execution import execute_trading_decision
 from utils.logger import get_logger
 from database.connection import init_database
@@ -78,7 +79,9 @@ def main_trading_cycle_with_vision(upbit, logger):
         # 시장 데이터 수집 (기술적 지표, 공포탐욕지수 포함)
         print("📊 시장 데이터를 수집합니다...")
         daily_df, minute_df, current_price, orderbook, fear_greed_data = get_market_data()
-        
+        # print('데이터 조회2222, 비전포함', daily_df, minute_df, current_price, orderbook, fear_greed_data)
+        # print('데이터 조회3333, 분봉', minute_df, current_price)
+
         # 기술적 지표 계산
         if daily_df is not None:
             daily_df = calculate_technical_indicators(daily_df)
@@ -139,6 +142,22 @@ def main_trading_cycle_with_vision(upbit, logger):
         print("💼 매매 결정을 실행합니다...")
         execution_result = execute_trading_decision(upbit, decision, investment_status, market_data)
         
+        # 손절수동매매
+        # print('데이터 조회2222, 비전포함', daily_df, minute_df, current_price, orderbook, fear_greed_data)
+        
+        decisionSelf=False
+        total_profit_loss = get_total_profit_loss(upbit)
+        
+        if average(minute_df[0:10]) < current_price and total_profit_loss > 50:
+            decisionSelf=True
+        if decisionSelf:
+            print("💼 손절 수동 매매 결정을 실행합니다...")
+            decision = {'decision': 'sell'}
+            execution_result = execute_trading_decision(upbit, decision, investment_status, market_data)
+        else:
+            print("💼 손절 수동 매매 실행 안합니다...")
+
+
         if execution_result and execution_result.get('success', False):
             print("✅ 매매 실행 완료")
             logger.info(f"매매 실행 성공: {execution_result}")
@@ -160,7 +179,9 @@ def main_trading_cycle_with_indicators(upbit, logger):
         # 시장 데이터 수집 (기술적 지표, 공포탐욕지수 포함)
         print("📊 시장 데이터를 수집합니다...")
         daily_df, minute_df, current_price, orderbook, fear_greed_data = get_market_data()
-        
+        print('데이터 조회1111', daily_df, minute_df, current_price, orderbook, fear_greed_data)
+
+
         # 기술적 지표 계산
         if daily_df is not None:
             daily_df = calculate_technical_indicators(daily_df)
@@ -191,12 +212,14 @@ def main_trading_cycle_with_indicators(upbit, logger):
         print("💼 매매 결정을 실행합니다...")
         execution_result = execute_trading_decision(upbit, decision, investment_status, market_data)
         
-        # # 수동동매매 실행
-        # if aa:
+        # 수동동매매 실행
+        decisionSelf=False
+
+        if decisionSelf:
             
-        #     print("💼 매매 결정을 실행합니다...")
-        #     decision = {'decision': 'sell'}
-        #     execution_result = execute_trading_decision(upbit, decision, investment_status, market_data)
+            print("💼 매매 결정을 실행합니다...")
+            decision = {'decision': 'sell'}
+            execution_result = execute_trading_decision(upbit, decision, investment_status, market_data)
         
         if execution_result and execution_result.get('success', False):
             print("✅ 매매 실행 완료")
