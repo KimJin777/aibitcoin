@@ -7,7 +7,7 @@ import pyupbit
 from typing import Optional, Dict, Any
 from config.settings import TRADING_SYMBOL
 
-def get_total_profit_loss(upbit) -> Optional[Dict[str, Any]]:
+def get_total_profit_loss(upbit) -> Optional[Dict[str, Any]] :
     """이익 조회 함수"""
     
     try:
@@ -75,6 +75,7 @@ def get_total_profit_loss(upbit) -> Optional[Dict[str, Any]]:
                     print(f"💼 총 투자금액: {total_investment:,.0f}원")
                     
                     # 총 수익/손실
+                    print("비트코인 가치", btc_value, "총투자액", total_investment)
                     total_profit_loss = btc_value - total_investment
                     total_profit_loss_percent = (total_profit_loss / total_investment) * 100
                     print(f"📊 총 수익/손실: {total_profit_loss:,.0f}원 ({total_profit_loss_percent:+.2f}%)")

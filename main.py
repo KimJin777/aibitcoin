@@ -148,7 +148,22 @@ def main_trading_cycle_with_vision(upbit, logger):
         decisionSelf=False
         total_profit_loss = get_total_profit_loss(upbit)
         
-        if average(minute_df[0:10]) < current_price and total_profit_loss > 50:
+        current_btc_value = total_profit_loss['current_price']*total_profit_loss['btc_balance']
+        my_btc_value = total_profit_loss['btc_avg_price']*total_profit_loss['btc_balance']
+        total_profit_loss_value = my_btc_value - current_btc_value
+        # print('분봉 평균', minute_df['High'][0:10].mean(), current_price)
+        # print('분봉 ', (minute_df['High'][0:10]))
+        # print('이익', total_profit_loss)
+        
+        # print('비트코인 보유량', total_profit_loss['btc_balance'])
+        # btc_current_value = total_profit_loss['current_price']
+        # print('현재가격', btc_current_value)
+        # my_btc_value = total_profit_loss['btc_balance']*total_profit_loss['current_price']
+        # print('나의 비트코인 가치', my_btc_value)
+        # total_profit_loss_value = btc_current_value - my_btc_value
+        print('이익', total_profit_loss_value)
+        if average(minute_df[0:10]) > current_price and total_profit_loss_value > 50:
+            #평균가격이 현재가보다 높다는 것은 가격이 내리고 있다는 증거 
             decisionSelf=True
         if decisionSelf:
             print("💼 손절 수동 매매 결정을 실행합니다...")
