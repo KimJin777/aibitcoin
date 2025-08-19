@@ -7,6 +7,7 @@ import time
 from typing import Optional, Dict, Any
 from config.settings import get_trading_config
 from database.trade_recorder import save_trade_record, save_market_data_record, save_system_log_record
+# from account.profit_loss import get_total_profit_loss
 
 def execute_trading_decision(upbit, decision: Dict[str, Any], investment_status: Optional[Dict[str, Any]], market_data: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """AI 결정에 따른 매매 실행"""
@@ -191,6 +192,7 @@ def execute_trading_decision(upbit, decision: Dict[str, Any], investment_status:
             print(f"❌ 매도 주문 중 오류: {e}")
             execution_result['status'] = 'error'
             return execution_result
+ 
             
     elif decision['decision'] == 'hold':
         print("🟡 보유 신호 - 현재 포지션 유지")
