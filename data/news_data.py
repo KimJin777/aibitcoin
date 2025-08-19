@@ -6,6 +6,44 @@ Google News API를 통해 비트코인 관련 뉴스를 수집하고 감정 분�
 import requests
 from typing import Optional, List, Dict, Any
 from config.settings import SERP_API_KEY, NEWS_COUNT, NEWS_LANGUAGE, NEWS_REGION
+import datetime
+from database.connection import get_db_connection
+import json
+
+def save_news_to_db(news_data):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    now = datetime.datetime.now()
+    
+    # 리스트를 JSON 문자열로 변환
+    news_json = json.dumps(news_data)
+    
+    cursor.execute(
+        "INSERT INTO news (data, fetched_at) VALUES (%s, %s)",
+        (news_json, now)
+    )
+    conn.commit()
+    cursor.close()
+    conn.close()
+
+def get_cached_news_from_db():
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+    one_hour_ago = datetime.datetime.now() - datetime.timedelta(hours=1)
+    
+    cursor.execute(
+        "SELECT * FROM news WHERE fetched_at >= %s ORDER BY fetched_at DESC LIMIT 1",
+        (one_hour_ago,)
+    )
+    
+    result = cursor.fetchone()
+    cursor.close()
+    conn.close()
+    
+    if result:
+        # JSON 문자열을 파이썬 객체로 변환
+        return {'data': json.loads(result['data'])}
+    return None
 
 def get_bitcoin_news() -> Optional[List[Dict[str, Any]]]:
     """Google News API를 사용하여 비트코인 관련 뉴스 수집"""
@@ -14,6 +52,10 @@ def get_bitcoin_news() -> Optional[List[Dict[str, Any]]]:
     if not SERP_API_KEY:
         print("⚠️ SERP_API_KEY가 설정되지 않아 뉴스 분석을 건너뜁니다.")
         return None
+    
+    news = get_cached_news_from_db()
+    if news:
+        return news['data']
     
     try:
         url = "https://serpapi.com/search"
@@ -52,6 +94,8 @@ def get_bitcoin_news() -> Optional[List[Dict[str, Any]]]:
                     except Exception as e:
                         print(f"⚠️ 뉴스 데이터 처리 중 오류: {e}")
                         continue
+                
+                save_news_to_db(processed_news)
                 
                 return processed_news
             else:

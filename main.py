@@ -112,6 +112,10 @@ def main_trading_cycle_with_vision(upbit, logger):
         
         # 차트 스크린샷 캡처 및 base64 인코딩
         print("📸 차트 스크린샷을 캡처합니다...")
+        if not os.path.exists('images'):
+            create_images_directory()
+        
+        # 스크린샷 캡처 및 Vision API 분석
         screenshot_start_time = time.time()
         try:
             create_images_directory()

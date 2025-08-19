@@ -232,5 +232,28 @@ def get_db_connection():
     return db_connection.get_connection()
 
 def init_database():
-    """데이터베이스 초기화"""
-    return db_connection.create_tables()
+    """데이터베이스 초기화 및 테이블 생성"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # news 테이블 생성
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS news (
+                id BIGINT AUTO_INCREMENT PRIMARY KEY,
+                data JSON NOT NULL,
+                fetched_at DATETIME NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                INDEX idx_fetched_at (fetched_at)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+        """)
+        
+        conn.commit()
+        cursor.close()
+        conn.close()
+        print("✅ 데이터베이스 테이블 초기화 완료")
+        return True
+        
+    except Exception as e:
+        print(f"❌ 데이터베이스 초기화 중 오류 발생: {e}")
+        return False
