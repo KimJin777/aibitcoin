@@ -133,29 +133,6 @@ def get_latest_indicators(df: pd.DataFrame) -> Optional[dict]:
     
     return indicators
 
-def calculate_trend(df: pd.DataFrame, window: int = 20) -> str:
-    """이동평균선 기울기를 통한 추세 분석"""
-    if len(df) < window + 1:
-        return "neutral"
-        
-    sma = df['Close'].rolling(window=window).mean()
-    current_sma = sma.iloc[-1]
-    prev_sma = sma.iloc[-window]
-    
-    # 기울기 계산
-    slope = (current_sma - prev_sma) / window
-    
-    # 변동성 대비 기울기로 추세 판단
-    volatility = df['Close'].std()
-    slope_threshold = volatility * 0.01  # 변동성의 1%를 기준으로
-    
-    if slope > slope_threshold:
-        return "upward"
-    elif slope < -slope_threshold:
-        return "downward"
-    else:
-        return "neutral"
-
 def analyze_technical_signals(df: pd.DataFrame) -> dict:
     """기술적 신호 분석"""
     if df.empty:
@@ -167,27 +144,14 @@ def analyze_technical_signals(df: pd.DataFrame) -> dict:
     
     signals = {}
     
-    # 추세 분석 추가
-    trend = calculate_trend(df)
-    
-    # RSI 신호 (하락장에서는 더 엄격한 기준 적용)
+    # RSI 신호
     rsi = latest.get('RSI', 50)
-    if trend == "downward":
-        if rsi > 65:  # 하락장에서는 더 낮은 과매수 기준
-            signals['rsi_signal'] = 'overbought'
-        elif rsi < 25:  # 하락장에서는 더 낮은 과매도 기준
-            signals['rsi_signal'] = 'oversold'
-        else:
-            signals['rsi_signal'] = 'neutral'
+    if rsi > 70:
+        signals['rsi_signal'] = 'overbought'
+    elif rsi < 30:
+        signals['rsi_signal'] = 'oversold'
     else:
-        if rsi > 70:
-            signals['rsi_signal'] = 'overbought'
-        elif rsi < 30:
-            signals['rsi_signal'] = 'oversold'
-        else:
-            signals['rsi_signal'] = 'neutral'
-            
-    signals['trend'] = trend  # 추세 정보 추가
+        signals['rsi_signal'] = 'neutral'
     
     # MACD 신호
     macd = latest.get('MACD', 0)

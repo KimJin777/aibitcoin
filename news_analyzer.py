@@ -7,6 +7,7 @@ import json
 from datetime import datetime, timedelta
 import time
 import pandas as pd
+from data.market_data import get_market_data
 
 def get_bitcoin_news():
     """
@@ -73,14 +74,31 @@ def get_bitcoin_news():
         print(f"뉴스 수집 중 오류 발생: {e}")
         return None
 
-def analyze_news_sentiment(news_data):
+def analyze_news_sentiment(news_data, market_data=None):
     """
-    뉴스 감정 분석 (간단한 키워드 기반)
+    뉴스 감정 분석 (가격 데이터 통합)
     """
-    print("=== 뉴스 감정 분석 중 ===")
+    print("=== 뉴스 및 시장 데이터 감정 분석 중 ===")
     
     if not news_data:
         return None
+        
+    # 가격 데이터 분석
+    price_trend = "neutral"
+    price_change_pct = 0
+    
+    if market_data and 'daily_df' in market_data:
+        df = market_data['daily_df']
+        if not df.empty:
+            last_prices = df['close'].tail(2).values
+            if len(last_prices) >= 2:
+                price_change_pct = ((last_prices[1] - last_prices[0]) / last_prices[0]) * 100
+                if price_change_pct < -2:  # 2% 이상 하락
+                    price_trend = "bearish"
+                elif price_change_pct > 2:  # 2% 이상 상승
+                    price_trend = "bullish"
+                    
+        print(f"📊 가격 변동: {price_change_pct:.2f}% ({price_trend})")
     
     # 긍정적/부정적 키워드 정의
     positive_keywords = [
@@ -165,14 +183,36 @@ def display_news_summary(news_data):
         print(f"   🔗 {news['link']}")
         print(f"   💭 감정: {news['sentiment']} (점수: {news['sentiment_score']:.2f})")
 
-def get_market_impact_analysis(news_data):
+def get_market_impact_analysis(news_data, market_data=None):
     """
-    뉴스 기반 시장 영향 분석
+    뉴스와 가격 데이터 기반 시장 영향 분석
     """
     print("\n=== 시장 영향 분석 ===")
     
     if not news_data:
         return
+        
+    # 가격 동향 분석
+    price_trend = "neutral"
+    current_price = None
+    price_change_24h = 0
+    
+    if market_data:
+        if 'current_price' in market_data:
+            current_price = market_data['current_price']
+            
+        if 'daily_df' in market_data and not market_data['daily_df'].empty:
+            df = market_data['daily_df']
+            last_prices = df['close'].tail(2).values
+            if len(last_prices) >= 2:
+                price_change_24h = ((last_prices[1] - last_prices[0]) / last_prices[0]) * 100
+                if price_change_24h < -2:
+                    price_trend = "bearish"
+                elif price_change_24h > 2:
+                    price_trend = "bullish"
+                    
+        print(f"\n💰 현재 가격: {current_price:,}원")
+        print(f"📈 24시간 변동: {price_change_24h:.2f}% ({price_trend})")
     
     # 감정 점수 평균
     sentiment_scores = [news['sentiment_score'] for news in news_data]
@@ -221,6 +261,53 @@ def get_market_impact_analysis(news_data):
         if count > 0:
             print(f"  {keyword}: {count}회 언급")
 
+def get_trading_recommendation(analyzed_news, market_data=None):
+    """
+    뉴스와 가격 데이터 기반 매매 추천
+    """
+    if not analyzed_news:
+        return "hold", "데이터 부족"
+        
+    # 감정 점수 평균
+    sentiment_scores = [news['sentiment_score'] for news in analyzed_news]
+    avg_sentiment = sum(sentiment_scores) / len(sentiment_scores)
+    
+    # 가격 동향 분석
+    price_trend = "neutral"
+    price_change_24h = 0
+    price_change_momentum = 0
+    
+    if market_data and 'daily_df' in market_data and not market_data['daily_df'].empty:
+        df = market_data['daily_df']
+        # 24시간 가격 변화
+        last_prices = df['close'].tail(2).values
+        if len(last_prices) >= 2:
+            price_change_24h = ((last_prices[1] - last_prices[0]) / last_prices[0]) * 100
+            
+        # 추세 모멘텀 (3일)
+        if len(df) >= 3:
+            last_3_prices = df['close'].tail(3).values
+            price_change_momentum = ((last_3_prices[2] - last_3_prices[0]) / last_3_prices[0]) * 100
+    
+    # 매매 추천 로직
+    if market_data and price_change_24h < -3 and price_change_momentum < -5:
+        # 하락 추세가 강할 때
+        if avg_sentiment < -0.2:
+            return "sell", "강한 하락 추세와 부정적 뉴스"
+        else:
+            return "hold", "강한 하락 추세, 뉴스 중립적"
+    elif market_data and price_change_24h > 3 and avg_sentiment > 0.3:
+        # 상승 추세와 긍정적 뉴스
+        return "buy", "상승 추세와 긍정적 뉴스"
+    elif avg_sentiment < -0.3:
+        # 매우 부정적인 뉴스
+        return "sell", "매우 부정적인 뉴스 분위기"
+    elif avg_sentiment > 0.3 and price_change_momentum > 0:
+        # 긍정적 뉴스와 상승 모멘텀
+        return "buy", "긍정적 뉴스와 상승 모멘텀"
+    else:
+        return "hold", "뚜렷한 신호 없음"
+
 def main_news_cycle():
     """
     메인 뉴스 분석 사이클
@@ -230,19 +317,33 @@ def main_news_cycle():
     print("=" * 80)
     
     try:
+        # 시장 데이터 수집
+        daily_df, minute_df, current_price, orderbook, fear_greed_data = get_market_data()
+        market_data = {
+            'daily_df': daily_df,
+            'minute_df': minute_df,
+            'current_price': current_price,
+            'orderbook': orderbook,
+            'fear_greed_data': fear_greed_data
+        }
+        
         # 뉴스 수집
         news_data = get_bitcoin_news()
         
         if news_data:
-            # 뉴스 감정 분석
-            analyzed_news = analyze_news_sentiment(news_data)
+            # 뉴스 감정 분석 (가격 데이터 통합)
+            analyzed_news = analyze_news_sentiment(news_data, market_data)
             
             if analyzed_news:
                 # 뉴스 요약 표시
                 display_news_summary(analyzed_news)
                 
                 # 시장 영향 분석
-                get_market_impact_analysis(analyzed_news)
+                get_market_impact_analysis(analyzed_news, market_data)
+                
+                # 매매 추천
+                recommendation, reason = get_trading_recommendation(analyzed_news, market_data)
+                print(f"\n💡 매매 추천: {recommendation.upper()} ({reason})")
                 
                 # 분석 결과 저장
                 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
