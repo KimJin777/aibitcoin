@@ -199,18 +199,19 @@ class DatabaseConnection:
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
             """
             
-            cursor.execute(create_trades_table)
-            cursor.execute(create_market_data_table)
-            cursor.execute(create_system_logs_table)
-            cursor.execute(create_trading_reflections_table)
-            cursor.execute(create_performance_metrics_table)
-            cursor.execute(create_learning_insights_table)
-            cursor.execute(create_strategy_improvements_table)
+            # 테이블이 이미 확실하게 있으므로 테이블 생성쿼리는 주석처리
+            # cursor.execute(create_trades_table)
+            # cursor.execute(create_market_data_table)
+            # cursor.execute(create_system_logs_table)
+            # cursor.execute(create_trading_reflections_table)
+            # cursor.execute(create_performance_metrics_table)
+            # cursor.execute(create_learning_insights_table)
+            # cursor.execute(create_strategy_improvements_table)
             
-            self.connection.commit()
+            # self.connection.commit()
             cursor.close()
             
-            self.logger.info("데이터베이스 테이블 생성 완료")
+            # self.logger.info("데이터베이스 테이블 생성 완료")
             return True
             
         except Error as e:
@@ -231,5 +232,73 @@ def get_db_connection():
     return db_connection.get_connection()
 
 def init_database():
-    """데이터베이스 초기화"""
-    return db_connection.create_tables()
+    """데이터베이스 초기화 및 테이블 생성"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # trades 테이블 재생성
+        cursor.execute("DROP TABLE IF EXISTS trades")
+        cursor.execute("""
+            CREATE TABLE trades (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                timestamp DATETIME NOT NULL,
+                decision VARCHAR(10) NOT NULL,
+                action VARCHAR(10) NOT NULL,
+                price DECIMAL(20, 8) NOT NULL,
+                amount DECIMAL(20, 8) NOT NULL,
+                total_value DECIMAL(20, 2) NOT NULL,
+                fee DECIMAL(20, 2) DEFAULT 0,
+                balance_krw DECIMAL(20, 2) NOT NULL,
+                balance_btc DECIMAL(20, 8) NOT NULL,
+                order_id VARCHAR(100),
+                status VARCHAR(20) DEFAULT 'executed',
+                confidence DECIMAL(5, 4),
+                reasoning TEXT,
+                market_data JSON,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+        """)
+        
+        # 기존 news 테이블이 있다면 삭제
+        cursor.execute("DROP TABLE IF EXISTS news")
+        
+        # news 테이블 새로 생성
+        cursor.execute("""
+            CREATE TABLE news (
+                id BIGINT AUTO_INCREMENT PRIMARY KEY,
+                data JSON NOT NULL,
+                fetched_at DATETIME NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                INDEX idx_fetched_at (fetched_at)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+        """)
+
+        # 기존 테이블 마이그레이션: fetched_at 컬럼/인덱스 보정
+        try:
+            cursor.execute("SHOW COLUMNS FROM news LIKE 'fetched_at'")
+            column_exists = cursor.fetchone()
+            if not column_exists:
+                cursor.execute(
+                    "ALTER TABLE news ADD COLUMN fetched_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP"
+                )
+
+            # 인덱스 확인 및 생성
+            cursor.execute("SHOW INDEX FROM news WHERE Key_name = %s", ("idx_fetched_at",))
+            index_exists = cursor.fetchone()
+            if not index_exists:
+                cursor.execute("CREATE INDEX idx_fetched_at ON news (fetched_at)")
+        except Exception as _e:
+            # 마이그레이션 시도 실패는 치명적이지 않으므로 로깅만 하고 계속 진행
+            pass
+        
+        conn.commit()
+        cursor.close()
+        conn.close()
+        print("✅ 데이터베이스 테이블 초기화 완료")
+        return True
+        
+    except Exception as e:
+        print(f"❌ 데이터베이스 초기화 중 오류 발생: {e}")
+        return False

@@ -7,6 +7,95 @@ import pyupbit
 from typing import Optional, Dict, Any
 from config.settings import TRADING_SYMBOL
 
+def get_total_profit_loss(upbit) -> Optional[Dict[str, Any]] :
+    """이익 조회 함수"""
+    
+    try:
+        # 전체 잔고 조회
+        balances = upbit.get_balances()
+        if balances is None:
+            print("❌ 잔고 조회 실패")
+            return None
+        
+        # KRW 잔고
+        krw_balance = 0
+        btc_balance = 0
+        btc_avg_price = 0
+        
+        # balances가 리스트인 경우
+        if isinstance(balances, list):
+            for balance in balances:
+                if isinstance(balance, dict):
+                    currency = balance.get('currency', '')
+                    if currency == 'KRW':
+                        krw_balance = float(balance.get('balance', 0))
+                    elif currency == 'BTC':
+                        btc_balance = float(balance.get('balance', 0))
+                        btc_avg_price = float(balance.get('avg_buy_price', 0))
+        # balances가 딕셔너리인 경우
+        elif isinstance(balances, dict):
+            for currency, balance_data in balances.items():
+                if currency == 'KRW':
+                    krw_balance = float(balance_data.get('balance', 0))
+                elif currency == 'BTC':
+                    btc_balance = float(balance_data.get('balance', 0))
+                    btc_avg_price = float(balance_data.get('avg_buy_price', 0))
+        
+
+        print(f"₿ 보유 비트코인: {btc_balance:.8f} BTC")
+        if btc_avg_price > 0:
+            print(f"📈 평균 매수가: {btc_avg_price:,.0f}원")
+        
+        # 현재 비트코인 가격
+        current_price = pyupbit.get_current_price(TRADING_SYMBOL)
+        if current_price:
+            print(f"📊 현재 비트코인 가격: {current_price:,.0f}원")
+            
+            # 비트코인 평가금액
+            if btc_balance > 0:
+                btc_value = btc_balance * current_price
+                print(f"💎 비트코인 평가금액: {btc_value:,.2f}원")
+                
+                # 총 자산
+                total_assets = krw_balance + btc_value
+                print(f"🏦 총 자산: {total_assets:,.2f}원")
+                
+                # 비트코인 비중
+                btc_ratio = (btc_value / total_assets) * 100
+                print(f"📊 비트코인 비중: {btc_ratio:.2f}%")
+                
+                # 수익률 계산
+                if btc_avg_price > 0:
+                    profit_loss = current_price - btc_avg_price
+                    profit_loss_percent = (profit_loss / btc_avg_price) * 100
+                    print(f"📈 수익/손실: {profit_loss:,.0f}원 ({profit_loss_percent:+.2f}%)")
+                    
+                    # 총 투자금액 (평균 매수가 * 보유 수량)
+                    total_investment = btc_avg_price * btc_balance
+                    print(f"💼 총 투자금액: {total_investment:,.0f}원")
+                    
+                    # 총 수익/손실
+                    print("비트코인 가치", btc_value, "총투자액", total_investment)
+                    total_profit_loss = btc_value - total_investment
+                    total_profit_loss_percent = (total_profit_loss / total_investment) * 100
+                    print(f"📊 총 수익/손실: {total_profit_loss:,.0f}원 ({total_profit_loss_percent:+.2f}%)")
+                    
+        else:
+            print("❌ 현재 비트코인 가격 조회 실패")
+            current_price = 0
+        
+        return {
+            'krw_balance': krw_balance,
+            'btc_balance': btc_balance,
+            'btc_avg_price': btc_avg_price,
+            'current_price': current_price
+        }
+        
+    except Exception as e:
+        print(f"❌ 계좌 상태 확인 실패: {e}")
+        print(f"🔍 오류 상세: {type(e).__name__}")
+        return total_profit_loss
+
 def get_investment_status(upbit) -> Optional[Dict[str, Any]]:
     """현재 투자 상태 조회 함수"""
     print("=== 투자 상태 조회 중 ===")
@@ -67,9 +156,9 @@ def get_investment_status(upbit) -> Optional[Dict[str, Any]]:
                 
                 # 수익률 계산
                 if btc_avg_price > 0:
-                    profit_loss = current_price - btc_avg_price
+                    profit_loss = (current_price - btc_avg_price)/1000
                     profit_loss_percent = (profit_loss / btc_avg_price) * 100
-                    print(f"📈 수익/손실: {profit_loss:,.0f}원 ({profit_loss_percent:+.2f}%)")
+                    print(f"📈 수익/손실: {profit_loss:,.0f}원 ({profit_loss_percent*1000:+.2f}%)")
                     
                     # 총 투자금액 (평균 매수가 * 보유 수량)
                     total_investment = btc_avg_price * btc_balance
