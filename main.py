@@ -146,7 +146,7 @@ def main_trading_cycle_with_vision(upbit, logger):
         print("💼 매매 결정을 실행합니다...")
         execution_result = execute_trading_decision(upbit, decision, investment_status, market_data)
         
-        # 손절매매 로직
+        # 손절매매 로직 (보유 신호일 때만 실행)
         print("\n=== 손절매 조건 검사 시작 ===")
         decisionSelf = False
         
@@ -177,12 +177,12 @@ def main_trading_cycle_with_vision(upbit, logger):
             print(f"  - 현재 손익: {total_profit_loss_value:,.0f}원")
             print(f"  - 최소 수익 기준: {sell_amount*0.0005:,.0f}원")
             
-            # 5. 손절매 조건 검사
+            # 5. 손절매 조건 검사 (AI 신호가 'hold'인 경우에만)
             price_dropping = recent_high_avg > current_price
             profit_sufficient = total_profit_loss_value > (sell_amount*0.0005)
-            can_execute = execution_result.get('action') == 'none'
+            is_hold_signal = isinstance(decision, dict) and decision.get('decision') == 'hold'
             
-            if price_dropping and profit_sufficient and can_execute:
+            if price_dropping and profit_sufficient and is_hold_signal:
                 print("\n🚨 손절매 조건 충족:")
                 print(f"  - 가격 하락 확인 (평균가 {recent_high_avg:,.0f} > 현재가 {current_price:,.0f})")
                 print(f"  - 수익 발생 확인 (현재 수익: {total_profit_loss_value:,.0f}원)")
@@ -194,8 +194,8 @@ def main_trading_cycle_with_vision(upbit, logger):
                     print("  - 가격 하락 미감지")
                 if not profit_sufficient:
                     print("  - 충분한 수익 미발생")
-                if not can_execute:
-                    print("  - 다른 매매 진행 중")
+                if not is_hold_signal:
+                    print("  - AI 신호가 보유(hold)가 아님")
                     
         except Exception as e:
             print(f"❌ 손절매 검사 중 오류 발생: {e}")
