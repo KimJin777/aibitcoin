@@ -106,12 +106,11 @@ GOOGLE_API_KEY=your_google_api_key
 SERP_API_KEY=your_serp_api_key
 ```
 
-### 3. 데이터베이스 설정
+### 3. 데이터베이스 초기화
 
-MySQL에서 데이터베이스를 생성하세요:
-
-```sql
-CREATE DATABASE gptbitcoin CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+애플리케이션 실행 시 자동 초기화됩니다. 별도 수동 초기화가 필요하면 다음을 실행하세요:
+```bash
+python -c "from database.connection import init_database; print('init:', init_database())"
 ```
 
 ## 🎯 실행 방법
@@ -142,39 +141,65 @@ python main.py --interval 600
 python main.py --interval 1800
 ```
 
+### 스케줄러 실행
+- 메인 실행 시 자동으로 백그라운드에서 스케줄러가 시작됩니다.
+- 단독 실행이 필요하면:
+```bash
+python scheduler.py
+```
+또는 Windows 배치 스크립트:
+```bat
+scripts\run_scheduler.bat
+```
+
 ### 대시보드 실행
 ```bash
 python run_dashboard.py
 ```
+웹 브라우저에서 `http://localhost:8501` 접속
 
-웹 브라우저에서 http://localhost:8501 으로 접속하여 실시간 모니터링을 확인할 수 있습니다.
+## ✅ 테스트 실행 가이드
 
-## 📊 Vision API 분석 기능
+테스트 파일은 `tests/` 폴더에 정리되어 있습니다.
 
-### 🔍 차트 이미지 분석
-- **실시간 스크린샷 캡처**: Selenium으로 업비트 차트 자동 캡처
-- **이미지 최적화**: Pillow로 파일 크기 최적화 (2MB 이하)
-- **Vision API 분석**: Ollama llava:7b 모델로 차트 패턴 분석
-- **통합 분석**: Vision + 기술적 지표 + 시장 심리 종합 분석
-
-### 📈 분석 결과 예시
-```json
-{
-    "trend": "상승",
-    "bollinger_position": "중간",
-    "support_level": "0.385",
-    "resistance_level": "0.617",
-    "volume_pattern": "높은 거래량이 주요한 지점에서 하락",
-    "trading_signal": "매수",
-    "confidence": "중간",
-    "analysis_summary": "비트코인의 차트는 상승 동향을 보이고 있으며, 거래량은 주요한 지점에서 하락한다. 이를 통해 매수 신호가 나타나는 것으로 간단히 분석할 수 있습니다."
-}
+### 1) 개별 테스트 스크립트 실행
+```bash
+python tests/test_json_fix.py
+python tests/test_trading_with_reflection.py
+python tests/test_reflection_system.py
+python tests/test_vision_analysis.py
+python tests/test_vision_debug.py
 ```
 
-### ⚡ 성능 최적화
-- **응답 시간**: 평균 3-10초
-- **이미지 크기**: 0.07MB (최적화됨)
-- **분석 정확도**: Vision + 시장 데이터 통합으로 향상
+### 2) pytest로 일괄 실행 (선택)
+```bash
+pip install pytest
+pytest -q
+```
+
+pytest 사용을 원할 경우, 테스트 함수/파일 네이밍을 `test_*.py`/`test_*` 함수로 유지하세요.
+
+## 🧹 산출물 정리 규칙
+
+오래된 스크린샷, 로그, 임시 JSON 산출물을 자동/수동으로 정리하는 것을 권장합니다.
+
+- 이미지(`images/`): 최근 N개만 유지 (예: 50개). 나머지는 삭제.
+- 로그(`logs/`): 최근 14일만 유지. 오래된 로그 삭제.
+- 분석 산출물(`*.json`): 필요 시 수동 삭제.
+
+예시 파워셸 스니펫(Windows):
+```powershell
+# images/ 폴더에서 최근 50개만 남기고 삭제
+Get-ChildItem images -File | Sort-Object LastWriteTime -Descending | Select-Object -Skip 50 | Remove-Item -Force
+
+# logs/ 폴더에서 14일보다 오래된 파일 삭제
+Get-ChildItem logs -File | Where-Object { $_.LastWriteTime -lt (Get-Date).AddDays(-14) } | Remove-Item -Force
+
+# 루트의 개별 분석 JSON(패턴 매칭) 삭제
+Get-ChildItem -File *.json | Remove-Item -Force
+```
+
+배치 스크립트로 주기 실행을 원하면 `Task Scheduler`에 등록하세요.
 
 ## 🔧 시스템 구성
 

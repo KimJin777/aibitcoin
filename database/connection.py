@@ -237,7 +237,7 @@ def init_database():
         conn = get_db_connection()
         cursor = conn.cursor()
         
-        # news 테이블 생성
+        # news 테이블 생성 (없으면 생성)
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS news (
                 id BIGINT AUTO_INCREMENT PRIMARY KEY,
@@ -247,6 +247,24 @@ def init_database():
                 INDEX idx_fetched_at (fetched_at)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
         """)
+
+        # 기존 테이블 마이그레이션: fetched_at 컬럼/인덱스 보정
+        try:
+            cursor.execute("SHOW COLUMNS FROM news LIKE 'fetched_at'")
+            column_exists = cursor.fetchone()
+            if not column_exists:
+                cursor.execute(
+                    "ALTER TABLE news ADD COLUMN fetched_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP"
+                )
+
+            # 인덱스 확인 및 생성
+            cursor.execute("SHOW INDEX FROM news WHERE Key_name = %s", ("idx_fetched_at",))
+            index_exists = cursor.fetchone()
+            if not index_exists:
+                cursor.execute("CREATE INDEX idx_fetched_at ON news (fetched_at)")
+        except Exception as _e:
+            # 마이그레이션 시도 실패는 치명적이지 않으므로 로깅만 하고 계속 진행
+            pass
         
         conn.commit()
         cursor.close()
