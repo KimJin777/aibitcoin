@@ -156,9 +156,9 @@ def get_investment_status(upbit) -> Optional[Dict[str, Any]]:
                 
                 # 수익률 계산
                 if btc_avg_price > 0:
-                    profit_loss = current_price - btc_avg_price
+                    profit_loss = (current_price - btc_avg_price)/1000
                     profit_loss_percent = (profit_loss / btc_avg_price) * 100
-                    print(f"📈 수익/손실: {profit_loss:,.0f}원 ({profit_loss_percent:+.2f}%)")
+                    print(f"📈 수익/손실: {profit_loss:,.0f}원 ({profit_loss_percent*1000:+.2f}%)")
                     
                     # 총 투자금액 (평균 매수가 * 보유 수량)
                     total_investment = btc_avg_price * btc_balance

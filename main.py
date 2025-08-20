@@ -146,25 +146,61 @@ def main_trading_cycle_with_vision(upbit, logger):
         print("💼 매매 결정을 실행합니다...")
         execution_result = execute_trading_decision(upbit, decision, investment_status, market_data)
         
-        # 손절수동매매
-        # print('데이터 조회2222, 비전포함', daily_df, minute_df, current_price, orderbook, fear_greed_data)
+        # 손절매매 로직
+        print("\n=== 손절매 조건 검사 시작 ===")
+        decisionSelf = False
         
-        decisionSelf=False
-        total_profit_loss = get_total_profit_loss(upbit)
-        
-        current_btc_value = total_profit_loss['current_price']*total_profit_loss['btc_balance']
-        my_btc_value = total_profit_loss['btc_avg_price']*total_profit_loss['btc_balance']
-        total_profit_loss_value = current_btc_value - my_btc_value
-        sell_amount = total_profit_loss['btc_balance'] * 0.95  # 95% 매도
-        print('분봉 평균', minute_df['High'][0:10].mean(), current_price)
-        print('현재가격', current_btc_value)
-        print('이익', total_profit_loss_value)
-        
-        if (minute_df['High'][0:10].mean() > current_price) and (total_profit_loss_value > (sell_amount*0.0005)):
-            #평균가격이 현재가보다 크다는 것은 가격이 내리고 있다는 증거 
-            if execution_result['action'] =='none': 
-                decisionSelf=True
-                print("💼 손절 수동 매매 감지")
+        try:
+            # 1. 데이터 유효성 검증
+            if minute_df is None or minute_df.empty or len(minute_df) < 10:
+                print("⚠️ 분봉 데이터 부족: 손절매 검사 건너뜀")
+                return
+                
+            # 2. 손익 데이터 조회 및 검증
+            total_profit_loss = get_total_profit_loss(upbit)
+            if total_profit_loss is None:
+                print("⚠️ 손익 데이터 없음: 손절매 검사 건너뜀")
+                return
+                
+            # 3. 손절매 조건 계산
+            current_btc_value = total_profit_loss['current_price'] * total_profit_loss['btc_balance']
+            my_btc_value = total_profit_loss['btc_avg_price'] * total_profit_loss['btc_balance']
+            total_profit_loss_value = current_btc_value - my_btc_value
+            sell_amount = total_profit_loss['btc_balance'] * 0.95  # 95% 매도
+            recent_high_avg = minute_df['High'][0:10].mean()
+            
+            # 4. 상세 로깅
+            print(f"📊 손절매 조건 상태:")
+            print(f"  - 최근 10분 평균 고가: {recent_high_avg:,.0f}원")
+            print(f"  - 현재가: {current_price:,.0f}원")
+            print(f"  - 현재 보유 BTC 가치: {current_btc_value:,.0f}원")
+            print(f"  - 현재 손익: {total_profit_loss_value:,.0f}원")
+            print(f"  - 최소 수익 기준: {sell_amount*0.0005:,.0f}원")
+            
+            # 5. 손절매 조건 검사
+            price_dropping = recent_high_avg > current_price
+            profit_sufficient = total_profit_loss_value > (sell_amount*0.0005)
+            can_execute = execution_result.get('action') == 'none'
+            
+            if price_dropping and profit_sufficient and can_execute:
+                print("\n🚨 손절매 조건 충족:")
+                print(f"  - 가격 하락 확인 (평균가 {recent_high_avg:,.0f} > 현재가 {current_price:,.0f})")
+                print(f"  - 수익 발생 확인 (현재 수익: {total_profit_loss_value:,.0f}원)")
+                decisionSelf = True
+                logger.info(f"손절매 신호 감지 - 평균가: {recent_high_avg:,.0f}, 현재가: {current_price:,.0f}, 손익: {total_profit_loss_value:,.0f}")
+            else:
+                print("\n� 손절매 조건 미충족:")
+                if not price_dropping:
+                    print("  - 가격 하락 미감지")
+                if not profit_sufficient:
+                    print("  - 충분한 수익 미발생")
+                if not can_execute:
+                    print("  - 다른 매매 진행 중")
+                    
+        except Exception as e:
+            print(f"❌ 손절매 검사 중 오류 발생: {e}")
+            logger.error(f"손절매 검사 오류: {e}")
+            decisionSelf = False
 
         if decisionSelf:
             print("💼 손절 수동 매매 결정을 실행합니다...")
@@ -318,9 +354,11 @@ def main():
         try:
             if args.mode == 'vision':
                 # Vision API 포함 모드
+                print("🔍 Vision API 분석 모드로 실행합니다...")
                 main_trading_cycle_with_vision(upbit, logger)
             else:
                 # 기술적 지표만 사용 모드
+                print("📈 기술적 지표 분석 모드로 실행합니다...")
                 main_trading_cycle_with_indicators(upbit, logger)
             
             print("\n" + "=" * 60)
