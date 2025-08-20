@@ -237,9 +237,12 @@ def init_database():
         conn = get_db_connection()
         cursor = conn.cursor()
         
-        # news 테이블 생성 (없으면 생성)
+        # 기존 news 테이블이 있다면 삭제
+        cursor.execute("DROP TABLE IF EXISTS news")
+        
+        # news 테이블 새로 생성
         cursor.execute("""
-            CREATE TABLE IF NOT EXISTS news (
+            CREATE TABLE news (
                 id BIGINT AUTO_INCREMENT PRIMARY KEY,
                 data JSON NOT NULL,
                 fetched_at DATETIME NOT NULL,

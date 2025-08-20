@@ -292,7 +292,7 @@ def test_vision_analysis():
     print("=" * 60)
     
     try:
-        from test_vision_analysis import main as test_main
+        from tests.test_vision_analysis import main as test_main
         test_main()
     except ImportError:
         print("❌ test_vision_analysis.py 파일을 찾을 수 없습니다.")
