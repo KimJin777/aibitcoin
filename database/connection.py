@@ -237,6 +237,30 @@ def init_database():
         conn = get_db_connection()
         cursor = conn.cursor()
         
+        # trades 테이블 재생성
+        cursor.execute("DROP TABLE IF EXISTS trades")
+        cursor.execute("""
+            CREATE TABLE trades (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                timestamp DATETIME NOT NULL,
+                decision VARCHAR(10) NOT NULL,
+                action VARCHAR(10) NOT NULL,
+                price DECIMAL(20, 8) NOT NULL,
+                amount DECIMAL(20, 8) NOT NULL,
+                total_value DECIMAL(20, 2) NOT NULL,
+                fee DECIMAL(20, 2) DEFAULT 0,
+                balance_krw DECIMAL(20, 2) NOT NULL,
+                balance_btc DECIMAL(20, 8) NOT NULL,
+                order_id VARCHAR(100),
+                status VARCHAR(20) DEFAULT 'executed',
+                confidence DECIMAL(5, 4),
+                reasoning TEXT,
+                market_data JSON,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+        """)
+        
         # 기존 news 테이블이 있다면 삭제
         cursor.execute("DROP TABLE IF EXISTS news")
         
