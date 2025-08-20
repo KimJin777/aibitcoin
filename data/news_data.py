@@ -41,6 +41,7 @@ def get_cached_news_from_db():
     conn.close()
     
     if result:
+        print('✅ 캐시된 뉴스 데이터 사용')
         # JSON 문자열을 파이썬 객체로 변환
         return {'data': json.loads(result['data'])}
     return None

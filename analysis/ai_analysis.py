@@ -646,24 +646,43 @@ def integrate_vision_and_market_analysis(vision_data: Dict[str, Any], market_ana
     # Vision 신호와 시장 신호 통합
     vision_signal = vision_data.get('trading_signal', '보유')
     vision_confidence = vision_data.get('confidence', '중간')
+    trend = market_analysis.get('trend', 'neutral')
     
-    # 신뢰도 계산
+    # 신뢰도 계산 (하락 추세에서는 신뢰도 감소)
     confidence_map = {"높음": 0.8, "중간": 0.5, "낮음": 0.3}
     confidence = confidence_map.get(vision_confidence, 0.5)
     
-    # 매매 결정 로직
-    if vision_signal == "매수" and market_analysis["rsi_signal"] == "oversold":
-        decision["decision"] = "buy"
-        decision["confidence"] = min(confidence + 0.2, 1.0)
-    elif vision_signal == "매도" and market_analysis["rsi_signal"] == "overbought":
-        decision["decision"] = "sell"
-        decision["confidence"] = min(confidence + 0.2, 1.0)
-    elif vision_signal == "매수":
-        decision["decision"] = "buy"
-        decision["confidence"] = confidence
+    # 하락 추세에서는 신뢰도 30% 감소
+    if trend == "downward":
+        confidence *= 0.7
+        decision["reason"] += " | 하락 추세로 인한 신중한 접근"
+    
+    # 매매 결정 로직 (더 엄격한 조건)
+    if vision_signal == "매수":
+        # 매수 조건: RSI 과매도 + MACD 강세 + 볼린저 밴드 하단 + (상승추세 또는 중립)
+        if (market_analysis["rsi_signal"] == "oversold" and 
+            market_analysis["macd_signal"] == "bullish" and 
+            market_analysis["bb_signal"] == "lower_band" and 
+            trend != "downward"):
+            decision["decision"] = "buy"
+            decision["confidence"] = min(confidence + 0.2, 1.0)
+            decision["reason"] += " | 모든 매수 조건 충족"
+        else:
+            decision["decision"] = "hold"
+            decision["confidence"] = max(confidence - 0.1, 0.3)
+            decision["reason"] += " | 매수 조건 불충분"
+    
     elif vision_signal == "매도":
-        decision["decision"] = "sell"
-        decision["confidence"] = confidence
+        # 매도 조건: RSI 과매수 또는 (하락추세 + MACD 약세)
+        if (market_analysis["rsi_signal"] == "overbought" or 
+            (trend == "downward" and market_analysis["macd_signal"] == "bearish")):
+            decision["decision"] = "sell"
+            decision["confidence"] = min(confidence + 0.2, 1.0)
+            decision["reason"] += " | 매도 조건 충족"
+        else:
+            decision["decision"] = "hold"
+            decision["confidence"] = confidence
+    
     else:
         decision["decision"] = "hold"
         decision["confidence"] = confidence
